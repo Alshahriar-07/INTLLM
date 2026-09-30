@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import os
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.api.router import api_router
@@ -93,6 +97,38 @@ def create_app() -> FastAPI:
             "runtime_endpoint": settings.runtime_endpoint,
         }
 
+    # --- Production frontend serving (packaged app) -----------------------
+    # Enabled by the INTLLM.exe launcher: serves the built SPA from the root
+    # with an index.html fallback so client-side routes (/chat, /models, ...)
+    # never 404 on direct navigation. The catch-all is registered LAST, so
+    # /api/*, /v1/*, /docs and the meta routes keep precedence. Development
+    # mode (vite dev server) is unaffected.
+    static_root_raw = os.environ.get("INTLLM_STATIC_ROOT", "")
+    if os.environ.get("INTLLM_SERVE_STATIC") == "1" and static_root_raw:
+        static_root = Path(static_root_raw)
+        index_html = static_root / "index.html"
+        if index_html.is_file():
+            assets_dir = static_root / "assets"
+            if assets_dir.is_dir():
+                app.mount(
+                    "/assets",
+                    StaticFiles(directory=str(assets_dir)),
+                    name="frontend-assets",
+                )
+
+            @app.get("/{full_path:path}", include_in_schema=False)
+            async def spa(full_path: str) -> FileResponse:
+                # Real file wins (favicon, icons...); everything else falls
+                # back to index.html for SPA routing.
+                candidate = (static_root / full_path).resolve()
+                try:
+                    candidate.relative_to(static_root.resolve())
+                except ValueError:
+                    candidate = index_html
+                if candidate.is_file():
+                    return FileResponse(candidate)
+                return FileResponse(index_html)
+
     return app
 
 
@@ -109,6 +145,13 @@ def run() -> None:
         port=settings.intllm_port,
         log_level=settings.intllm_log_level.lower(),
     )
+
+
+def launch() -> None:
+    """Packaged-application entrypoint (INTLLM.exe)."""
+    from app.launcher import main as launcher_main
+
+    raise SystemExit(launcher_main())
 
 
 if __name__ == "__main__":

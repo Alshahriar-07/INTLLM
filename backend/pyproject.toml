@@ -31,6 +31,7 @@ dev = [
 
 [project.scripts]
 intllm-api = "app.main:run"
+intllm = "app.main:launch"
 
 [build-system]
 requires = ["setuptools>=68"]
