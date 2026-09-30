@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="INTLLM icon">
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#16C8FF"/><stop offset=".5" stop-color="#2563EB"/><stop offset="1" stop-color="#7C2CFF"/></linearGradient></defs>
+<rect width="512" height="512" rx="104" fill="#090D16"/>
+<g transform="translate(92 94) scale(1.15)">
+<path fill="url(#g)" d="M0 42Q0 15 25 0H125L180 55V145L145 165V78L112 45H55V165L0 200Z"/>
+<path fill="url(#g)" d="M105 108L160 165H225L280 108V0L225 35V92L185 132L145 92Z"/>
+<path fill="#090D16" d="M55 45H112L145 78V110L90 55H55Z"/>
+</g>
+</svg>

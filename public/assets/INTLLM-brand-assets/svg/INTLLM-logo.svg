@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 360" role="img" aria-labelledby="title desc">
+<title id="title">INTLLM</title>
+<desc id="desc">INTLLM gradient ribbon emblem and geometric wordmark.</desc>
+<defs>
+  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#16C8FF"/>
+    <stop offset="48%" stop-color="#2563EB"/>
+    <stop offset="100%" stop-color="#7C2CFF"/>
+  </linearGradient>
+</defs>
+<g transform="translate(35 35)">
+  <path fill="url(#g)" d="M0 42 Q0 15 25 0 L125 0 L180 55 L180 145 L145 165 L145 78 L112 45 L55 45 L55 165 L0 200 Z"/>
+  <path fill="url(#g)" d="M105 108 L160 165 L225 165 L280 108 L280 0 L225 35 L225 92 L185 132 L145 92 Z" transform="translate(0 0)"/>
+  <path fill="#111827" d="M55 45 L112 45 L145 78 L145 110 L90 55 L55 55 Z"/>
+</g>
+<text x="365" y="235" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="210" font-weight="800" letter-spacing="-8" fill="#111827">INTLLM</text>
+</svg>

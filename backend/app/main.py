@@ -1,0 +1,115 @@
+"""INTLLM FastAPI application entry point."""
+
+from __future__ import annotations
+
+import time
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+
+from app import __version__
+from app.api.router import api_router
+from app.api.routes.openai import router as openai_router
+from app.config.settings import get_settings
+from app.core.errors import install_exception_handlers
+from app.core.logging import configure_logging, get_logger
+from app.core.metrics import metrics
+from app.db.session import get_database
+from app.services.background.service import get_background_service
+from app.services.browser.service import get_browser_service
+
+logger = get_logger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings = get_settings()
+    configure_logging(settings.intllm_log_level)
+    logger.info(
+        "starting INTLLM backend",
+        extra={"intllm_extra": {"version": __version__, "env": settings.intllm_env}},
+    )
+
+    database = get_database()
+    available, error = await database.ping()
+    if available:
+        logger.info("postgres connected")
+    else:
+        # Start anyway and report status honestly rather than crashing.
+        logger.warning("postgres unavailable at startup", extra={"intllm_extra": {"error": error}})
+
+    await get_background_service().start()
+    try:
+        yield
+    finally:
+        await get_background_service().stop()
+        await get_browser_service().close()
+        await database.dispose()
+        logger.info("INTLLM backend stopped")
+
+
+def create_app() -> FastAPI:
+    settings = get_settings()
+    app = FastAPI(
+        title="INTLLM Local API",
+        version=__version__,
+        description="Local-first AI runtime: memory, retrieval, tools and an OpenAI-compatible API.",
+        lifespan=lifespan,
+        docs_url="/docs",
+        redoc_url=None,
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins or ["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @app.middleware("http")
+    async def timing_middleware(request: Request, call_next):
+        started = time.perf_counter()
+        response = await call_next(request)
+        duration = (time.perf_counter() - started) * 1000.0
+        metrics.observe("http.request", duration)
+        metrics.increment("http.request.count")
+        response.headers["X-Process-Time-Ms"] = f"{duration:.2f}"
+        return response
+
+    install_exception_handlers(app)
+
+    app.include_router(api_router, prefix=settings.intllm_api_prefix)
+    app.include_router(openai_router)
+
+    @app.get("/", tags=["meta"])
+    async def root() -> dict[str, object]:
+        return {
+            "name": "INTLLM",
+            "version": __version__,
+            "api_prefix": settings.intllm_api_prefix,
+            "openai_base": "/v1",
+            "runtime_endpoint": settings.runtime_endpoint,
+        }
+
+    return app
+
+
+app = create_app()
+
+
+def run() -> None:
+    import uvicorn
+
+    settings = get_settings()
+    uvicorn.run(
+        "app.main:app",
+        host=settings.intllm_host,
+        port=settings.intllm_port,
+        log_level=settings.intllm_log_level.lower(),
+    )
+
+
+if __name__ == "__main__":
+    run()
