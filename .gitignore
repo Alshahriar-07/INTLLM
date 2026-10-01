@@ -1,8 +1,7 @@
 # Dependencies
 node_modules/
-dist/
 
-# Environment files
+# Environment / secrets
 .env
 .env.local
 .env.*.local
@@ -21,10 +20,36 @@ Thumbs.db
 *.log
 npm-debug.log*
 
-# Build outputs
-build/
+# Frontend build output (Vite empties this on every build)
 dist/
 
-# Specific directories to ignore
-PLAN/
-INTLLM-PLAN/
+# Release staging output
+build/
+/release/
+!build/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local data / databases
+/data/
+backend/data/
+*.sqlite
+*.sqlite3
+*.db
+
+# Local INTLLM runtime state
+.intllm/

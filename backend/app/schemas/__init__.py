@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # --- Health / status -------------------------------------------------------
@@ -84,6 +84,26 @@ class ChatRequestBody(BaseModel):
     options: dict[str, Any] = Field(default_factory=dict)
 
 
+class OpenAIChatRequest(BaseModel):
+    """OpenAI-compatible chat completion request.
+
+    Uses the field names real OpenAI clients send (``stream`` at the top level).
+    Unknown fields (e.g. ``frequency_penalty``) are accepted and ignored so
+    clients with extra parameters still work. INTLLM-specific toggles are read
+    from ``extra_body`` (``intllm_use_web`` / ``intllm_use_brain``).
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    model: str | None = None
+    messages: list[ChatMessageIn]
+    stream: bool = False
+    temperature: float | None = None
+    top_p: float | None = None
+    max_tokens: int | None = None
+    stop: str | list[str] | None = None
+
+
 class ActivityStep(BaseModel):
     id: str
     type: str
@@ -120,6 +140,10 @@ class ConversationDetailOut(ConversationOut):
 class ConversationCreate(BaseModel):
     title: str | None = None
     model: str | None = None
+
+
+class ConversationUpdate(BaseModel):
+    title: str
 
 
 # --- Brain / memory --------------------------------------------------------

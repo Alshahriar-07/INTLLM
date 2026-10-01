@@ -8,6 +8,7 @@ export type NavigationTab =
   | 'tools'
   | 'api'
   | 'system'
+  | 'docs'
   | 'settings';
 
 export type ActivityStepType = 

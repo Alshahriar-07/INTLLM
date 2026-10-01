@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pytest
-
 from app.core.errors import ValidationError
 from app.services.brain.service import (
     extract_keywords,

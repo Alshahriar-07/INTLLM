@@ -24,6 +24,7 @@ import struct
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -34,7 +35,7 @@ BUILD_DIR = ROOT / "build"
 # Release output lives in build/release so the exe never collides with the
 # frontend dist/ folder that Vite empties on every build.
 RELEASE_DIR = ROOT / "build" / "release"
-OUT_EXE = RELEASE_DIR / "INTLLM.exe"
+OUT_EXE = RELEASE_DIR / "INTLLM-windows-x64.exe"
 
 STEP_PREFIX = "\n=== "
 
@@ -112,7 +113,7 @@ def exe_arch(path: Path) -> str:
 def step_smoke_test() -> None:
     print(f"{STEP_PREFIX}5/5 Executable smoke test")
     if not OUT_EXE.is_file():
-        raise SystemExit("INTLLM.exe was not produced")
+        raise SystemExit(f"{OUT_EXE.name} was not produced")
     size_mb = OUT_EXE.stat().st_size / (1024 * 1024)
     arch = exe_arch(OUT_EXE)
     print(f"  exe: {OUT_EXE}")
@@ -142,12 +143,21 @@ def step_smoke_test() -> None:
         try:
             deadline = time.time() + 90
             health = None
+            last_error = "no response yet"
             while time.time() < deadline:
                 try:
-                    with urllib.request.urlopen(f"{base}/api/health", timeout=2) as response:
+                    with urllib.request.urlopen(f"{base}/api/health", timeout=10) as response:
                         health = response.status
                         break
-                except Exception:
+                except urllib.error.HTTPError as exc:
+                    # A degraded 503 is a valid, honest health response: the
+                    # server is up, PostgreSQL/Ollama may simply be absent.
+                    if exc.code in (200, 503):
+                        health = exc.code
+                        break
+                    last_error = f"HTTP {exc.code}"
+                except Exception as exc:  # noqa: BLE001 - backend not up yet
+                    last_error = f"{type(exc).__name__}: {exc}"
                     if proc.poll() is not None:
                         raise SystemExit(
                             f"EXE exited during smoke test; log: {log_path}\n"
@@ -156,7 +166,8 @@ def step_smoke_test() -> None:
                     time.sleep(1)
             if health not in (200, 503):
                 raise SystemExit(
-                    f"/api/health did not respond correctly (got {health}); log: {log_path}"
+                    f"/api/health did not respond correctly (got {health}, last error: {last_error}); "
+                    f"log: {log_path}"
                 )
 
             with urllib.request.urlopen(f"{base}/chat", timeout=5) as response:

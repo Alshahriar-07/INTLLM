@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import httpx
 import pytest
-
 from app.main import app
 from app.services.ollama import process as ollama_process
-from app.services.ollama.service import get_ollama_control_service
 
 
 @pytest.fixture(autouse=True)

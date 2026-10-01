@@ -1,78 +1,112 @@
-/** @type {import('tailwindcss').Config} */
+/**
+ * INTLLM design system — Black · White · Ash monochrome.
+ *
+ * All colors resolve to the semantic CSS variables defined in src/index.css so
+ * both themes share one token vocabulary. Never hardcode raw hex/rgb values in
+ * components; extend this map instead.
+ *
+ * @type {import('tailwindcss').Config}
+ */
 export default {
   darkMode: ['class'],
-  content: [
-    './index.html',
-    './src/**/*.{js,ts,jsx,tsx}',
-  ],
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
+    // Restrained radius scale — no "everything is a pill".
+    // 2px technical · 4px controls · 6px cards · 8px containers · 10px panels.
+    borderRadius: {
+      none: '0px',
+      sm: '2px',
+      DEFAULT: '4px',
+      md: '6px',
+      lg: '8px',
+      xl: '10px',
+      '2xl': '12px',
+      full: '9999px'
+    },
     extend: {
       colors: {
-        border: 'hsl(var(--border))',
-        input: 'hsl(var(--input))',
-        ring: 'hsl(var(--ring))',
-        background: 'hsl(var(--background))',
-        foreground: 'hsl(var(--foreground))',
+        background: 'rgb(var(--background) / <alpha-value>)',
+        foreground: 'rgb(var(--foreground) / <alpha-value>)',
+        canvas: 'rgb(var(--canvas) / <alpha-value>)',
+        surface: 'rgb(var(--surface) / <alpha-value>)',
+        elevated: 'rgb(var(--elevated) / <alpha-value>)',
+        panel: {
+          DEFAULT: 'rgb(var(--panel) / <alpha-value>)',
+          hover: 'rgb(var(--panel-hover) / <alpha-value>)'
+        },
+        border: {
+          DEFAULT: 'rgb(var(--border) / <alpha-value>)',
+          strong: 'rgb(var(--border-strong) / <alpha-value>)'
+        },
+        input: 'rgb(var(--input) / <alpha-value>)',
+        ring: 'rgb(var(--ring) / <alpha-value>)',
         primary: {
-          DEFAULT: 'hsl(var(--primary))',
-          foreground: 'hsl(var(--primary-foreground))',
+          DEFAULT: 'rgb(var(--primary) / <alpha-value>)',
+          foreground: 'rgb(var(--accent-foreground) / <alpha-value>)'
         },
         secondary: {
-          DEFAULT: 'hsl(var(--secondary))',
-          foreground: 'hsl(var(--secondary-foreground))',
-        },
-        destructive: {
-          DEFAULT: 'hsl(var(--destructive))',
-          foreground: 'hsl(var(--destructive-foreground))',
+          DEFAULT: 'rgb(var(--secondary) / <alpha-value>)',
+          foreground: 'rgb(var(--primary) / <alpha-value>)'
         },
         muted: {
-          DEFAULT: 'hsl(var(--muted))',
-          foreground: 'hsl(var(--muted-foreground))',
+          DEFAULT: 'rgb(var(--muted) / <alpha-value>)',
+          foreground: 'rgb(var(--muted) / <alpha-value>)'
         },
         accent: {
-          DEFAULT: 'hsl(var(--accent))',
-          foreground: 'hsl(var(--accent-foreground))',
+          DEFAULT: 'rgb(var(--accent) / <alpha-value>)',
+          hover: 'rgb(var(--accent-hover) / <alpha-value>)',
+          foreground: 'rgb(var(--accent-foreground) / <alpha-value>)'
         },
-        popover: {
-          DEFAULT: 'hsl(var(--popover))',
-          foreground: 'hsl(var(--popover-foreground))',
+        success: 'rgb(var(--success) / <alpha-value>)',
+        warning: 'rgb(var(--warning) / <alpha-value>)',
+        error: 'rgb(var(--error) / <alpha-value>)',
+        destructive: {
+          DEFAULT: 'rgb(var(--error) / <alpha-value>)',
+          foreground: 'rgb(var(--accent-foreground) / <alpha-value>)'
         },
         card: {
-          DEFAULT: 'hsl(var(--card))',
-          foreground: 'hsl(var(--card-foreground))',
+          DEFAULT: 'rgb(var(--surface) / <alpha-value>)',
+          foreground: 'rgb(var(--primary) / <alpha-value>)'
         },
-        panel: {
-          DEFAULT: '#0D1117',
-          border: '#21262D',
-          hover: '#161B22',
-          active: '#1C2128'
-        },
-        cyan: {
-          500: '#06b6d4',
-          400: '#22d3ee',
-          900: '#164e63',
-        },
-        emerald: {
-          500: '#10b981',
-          400: '#34d399',
-          900: '#064e3b',
-        },
-        amber: {
-          500: '#f59e0b',
-          400: '#fbbf24',
-          900: '#78350f',
+        popover: {
+          DEFAULT: 'rgb(var(--elevated) / <alpha-value>)',
+          foreground: 'rgb(var(--primary) / <alpha-value>)'
         }
       },
-      borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
-      },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace']
+        sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Consolas', 'monospace']
+      },
+      keyframes: {
+        'fade-in': {
+          from: { opacity: '0' },
+          to: { opacity: '1' }
+        },
+        'scale-in': {
+          from: { opacity: '0', transform: 'scale(0.97)' },
+          to: { opacity: '1', transform: 'scale(1)' }
+        },
+        'modal-in': {
+          from: { opacity: '0', transform: 'translateY(4px) scale(0.99)' },
+          to: { opacity: '1', transform: 'translateY(0) scale(1)' }
+        },
+        'slide-in-right': {
+          from: { transform: 'translateX(100%)' },
+          to: { transform: 'translateX(0)' }
+        },
+        'cursor-blink': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0' }
+        }
+      },
+      animation: {
+        'fade-in': 'fade-in 140ms ease-out',
+        'scale-in': 'scale-in 110ms ease-out',
+        'modal-in': 'modal-in 140ms ease-out',
+        'slide-in-right': 'slide-in-right 180ms ease-out',
+        'cursor-blink': 'cursor-blink 1s steps(2, start) infinite'
       }
-    },
+    }
   },
-  plugins: [],
-}
+  plugins: []
+};

@@ -66,25 +66,27 @@ export const ApiDashboard: React.FC = () => {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto overflow-y-auto max-h-[calc(100vh-3.5rem)]">
+    <div className="flex-1 overflow-y-auto"
+      >
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-[#21262D] pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold font-mono tracking-tight text-slate-900 dark:text-slate-100">
+            <h1 className="text-xl font-bold font-mono tracking-tight text-primary">
               LOCAL OPENAI-COMPATIBLE API
             </h1>
             <Badge variant="outline">REST / HTTP</Badge>
           </div>
-          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+          <p className="text-xs text-secondary mt-1">
             OpenAI-compatible REST endpoint at <span className="font-mono">{baseUrl}</span>
           </p>
         </div>
         <div
           className={`flex items-center gap-2 text-xs font-mono px-3 py-1.5 rounded border ${
             connected
-              ? 'text-emerald-500 dark:text-emerald-400 bg-emerald-950/20 border-emerald-800/40'
-              : 'text-amber-500 dark:text-amber-400 bg-amber-950/30 border-amber-800/40'
+              ? 'text-success bg-success/10 border-success/25'
+              : 'text-warning bg-warning/10 border-warning/25'
           }`}
         >
           {connected ? <Key className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
@@ -117,10 +119,10 @@ export const ApiDashboard: React.FC = () => {
                 <Card key={key.id} className="p-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm text-slate-800 dark:text-slate-100">{key.name}</span>
+                      <span className="font-mono text-sm text-primary">{key.name}</span>
                       <Badge variant={key.status === 'active' ? 'emerald' : 'rose'} size="sm">{key.status}</Badge>
                     </div>
-                    <div className="text-[11px] font-mono text-slate-500">
+                    <div className="text-[11px] font-mono text-muted">
                       {key.key} · scopes: {key.scopes.join(', ')} · created {key.created.slice(0, 10)}
                       {key.lastUsed ? ` · last used ${key.lastUsed.slice(0, 10)}` : ''}
                     </div>
@@ -140,13 +142,13 @@ export const ApiDashboard: React.FC = () => {
               ))}
             </div>
           ) : (
-            <Card className="p-12 text-center space-y-3 border-slate-200 dark:border-[#21262D]">
-              <div className="p-3 rounded-full bg-slate-200 dark:bg-slate-800/50 w-fit mx-auto text-slate-400">
-                <Key className="w-8 h-8 text-slate-500" />
+            <Card className="p-12 text-center space-y-3 border-border">
+              <div className="p-3 rounded-full bg-panel-hover w-fit mx-auto text-muted">
+                <Key className="w-8 h-8 text-muted" />
               </div>
               <div className="space-y-1">
-                <h2 className="text-base font-bold font-mono text-slate-800 dark:text-slate-200">No API keys</h2>
-                <p className="text-xs text-slate-600 dark:text-slate-400 font-sans max-w-sm mx-auto">
+                <h2 className="text-base font-bold font-mono text-primary">No API keys</h2>
+                <p className="text-xs text-secondary font-sans max-w-sm mx-auto">
                   {error ?? 'Create a key to authenticate OpenAI-compatible clients.'}
                 </p>
               </div>
@@ -158,12 +160,12 @@ export const ApiDashboard: React.FC = () => {
       {/* Playground Tab */}
       {activeTab === 'playground' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card className="p-4 space-y-4 border-slate-200 dark:border-[#21262D]">
-            <h3 className="text-xs font-mono font-semibold text-slate-500 flex items-center gap-1.5">
+          <Card className="p-4 space-y-4 border-border">
+            <h3 className="text-xs font-mono font-semibold text-muted flex items-center gap-1.5">
               <Terminal className="w-4 h-4" /> POST /v1/chat/completions
             </h3>
             <div className="space-y-1.5">
-              <label className="text-xs font-mono text-slate-600 dark:text-slate-300">User Prompt</label>
+              <label className="text-xs font-mono text-secondary">User Prompt</label>
               <Textarea
                 value={pgUser}
                 onChange={(e) => setPgUser(e.target.value)}
@@ -181,14 +183,14 @@ export const ApiDashboard: React.FC = () => {
             </Button>
           </Card>
 
-          <Card className="p-4 space-y-3 border-slate-200 dark:border-[#21262D] bg-slate-50 dark:bg-[#07090C]">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
-              <span className="text-xs font-mono font-semibold text-emerald-500">
+          <Card className="p-4 space-y-3 border-border bg-canvas">
+            <div className="flex items-center justify-between border-b border-border pb-2">
+              <span className="text-xs font-mono font-semibold text-success">
                 {pgResponse ? '200 OK' : 'Awaiting request'}
               </span>
-              <span className="text-[10px] font-mono text-slate-500">Content-Type: text/event-stream</span>
+              <span className="text-[10px] font-mono text-muted">Content-Type: text/event-stream</span>
             </div>
-            <pre className="text-xs font-mono text-slate-700 dark:text-slate-300 overflow-x-auto p-3 bg-white dark:bg-[#0D1117] rounded border border-slate-200 dark:border-slate-800 min-h-[120px] whitespace-pre-wrap">
+            <pre className="text-xs font-mono text-primary overflow-x-auto p-3 bg-surface rounded border border-border min-h-[120px] whitespace-pre-wrap">
               <code>{pgResponse || '// Response stream appears here'}</code>
             </pre>
           </Card>
@@ -226,8 +228,8 @@ export const ApiDashboard: React.FC = () => {
         description="Copy this key now — it will not be shown again."
         footer={<Button variant="primary" onClick={() => setCreatedSecret(null)}>Done</Button>}
       >
-        <div className="flex items-center gap-2 p-3 rounded bg-slate-100 dark:bg-[#161B22] border border-slate-200 dark:border-slate-800">
-          <code className="flex-1 text-xs font-mono break-all text-slate-800 dark:text-slate-100">
+        <div className="flex items-center gap-2 p-3 rounded bg-panel-hover border border-border">
+          <code className="flex-1 text-xs font-mono break-all text-primary">
             {createdSecret}
           </code>
           <Button
@@ -240,6 +242,7 @@ export const ApiDashboard: React.FC = () => {
           </Button>
         </div>
       </Modal>
+    </div>
     </div>
   );
 };

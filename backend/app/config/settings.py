@@ -37,6 +37,10 @@ class Settings(BaseSettings):
         default="http://127.0.0.1:3000,http://localhost:3000",
         alias="INTLLM_CORS_ORIGINS",
     )
+    # Reject oversized request bodies before they are parsed (10 MiB default).
+    intllm_max_request_bytes: int = Field(
+        default=10 * 1024 * 1024, alias="INTLLM_MAX_REQUEST_BYTES"
+    )
 
     # --- INTLLM runtime endpoint (advertised, not necessarily this server) --
     intllm_runtime_host: str = Field(default="172.22.0.1", alias="INTLLM_RUNTIME_HOST")
@@ -109,6 +113,13 @@ class Settings(BaseSettings):
                 f"INTLLM_PORT must be a valid TCP port ({VALID_PORT_MIN}-{VALID_PORT_MAX}); "
                 f"got {value}."
             )
+        return value
+
+    @field_validator("intllm_max_request_bytes")
+    @classmethod
+    def _validate_max_request_bytes(cls, value: int) -> int:
+        if value < 1024:
+            raise ValueError("INTLLM_MAX_REQUEST_BYTES must be at least 1024 bytes")
         return value
 
     @property

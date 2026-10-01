@@ -2,26 +2,31 @@ import React from 'react';
 import { cn } from '../../lib/utils';
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  variant?: 'default' | 'cyan' | 'emerald' | 'amber' | 'rose' | 'outline';
+  variant?: 'default' | 'cyan' | 'emerald' | 'amber' | 'rose' | 'purple' | 'outline';
   size?: 'sm' | 'md';
+  /** Subtle "status dot" style used by system indicators. */
+  dot?: boolean;
 }
 
 export const Badge: React.FC<BadgeProps> = ({
   className,
   variant = 'default',
   size = 'md',
+  dot = false,
   children,
   ...props
 }) => {
-  const baseStyles = 'inline-flex items-center font-mono font-medium rounded border transition-colors select-none';
-  
+  const baseStyles =
+    'inline-flex items-center font-mono font-medium rounded border transition-colors select-none whitespace-nowrap';
+
   const variants = {
-    default: 'bg-slate-800/80 text-slate-300 border-slate-700/60',
-    cyan: 'bg-cyan-950/60 text-cyan-400 border-cyan-700/50',
-    emerald: 'bg-emerald-950/60 text-emerald-400 border-emerald-700/50',
-    amber: 'bg-amber-950/60 text-amber-400 border-amber-700/50',
-    rose: 'bg-rose-950/60 text-rose-400 border-rose-700/50',
-    outline: 'bg-transparent text-slate-400 border-slate-700'
+    default: 'bg-panel-hover text-secondary border-border',
+    cyan: 'bg-accent/10 text-accent border-accent/25',
+    emerald: 'bg-success/10 text-success border-success/25',
+    amber: 'bg-warning/10 text-warning border-warning/25',
+    rose: 'bg-error/10 text-error border-error/25',
+    purple: 'bg-accent/10 text-accent border-accent/25',
+    outline: 'bg-transparent text-muted border-border'
   };
 
   const sizes = {
@@ -31,6 +36,7 @@ export const Badge: React.FC<BadgeProps> = ({
 
   return (
     <span className={cn(baseStyles, variants[variant], sizes[size], className)} {...props}>
+      {dot && <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80" aria-hidden />}
       {children}
     </span>
   );

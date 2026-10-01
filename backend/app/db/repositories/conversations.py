@@ -63,6 +63,14 @@ class ConversationRepository:
         await self._session.flush()
         return message
 
+    async def rename(self, conversation_id: uuid.UUID, title: str) -> Conversation | None:
+        conversation = await self.get(conversation_id)
+        if conversation is None:
+            return None
+        conversation.title = title
+        await self._session.flush()
+        return conversation
+
     async def delete(self, conversation_id: uuid.UUID) -> bool:
         conversation = await self.get(conversation_id)
         if conversation is None:

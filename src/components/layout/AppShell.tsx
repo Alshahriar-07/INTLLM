@@ -14,13 +14,14 @@ import { WebDashboard } from '../web/WebDashboard';
 import { BrowserControlPanel } from '../browser/BrowserControlPanel';
 import { ToolGateway } from '../tools/ToolGateway';
 import { ApiDashboard } from '../api/ApiDashboard';
+import { DocsDashboard } from '../docs/DocsDashboard';
 import { SystemDashboard } from '../system/SystemDashboard';
 import { BackgroundLearningWidget } from '../learning/BackgroundLearningWidget';
 import { SettingsWorkspace } from '../settings/SettingsWorkspace';
 
 export const AppShell: React.FC = () => {
   const [booting, setBooting] = useState(true);
-  const [activeTab, setActiveTab] = useState<NavigationTab>('overview');
+  const [activeTab, setActiveTab] = useState<NavigationTab>('chat');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showLearningWidget, setShowLearningWidget] = useState(false);
   const intllm = useIntllm();
@@ -29,6 +30,11 @@ export const AppShell: React.FC = () => {
     return <BootScreen onComplete={() => setBooting(false)} />;
   }
 
+  const navigate = (tab: NavigationTab) => {
+    setShowLearningWidget(false);
+    setActiveTab(tab);
+  };
+
   const renderCurrentPage = () => {
     if (showLearningWidget) {
       return <BackgroundLearningWidget />;
@@ -36,14 +42,7 @@ export const AppShell: React.FC = () => {
 
     switch (activeTab) {
       case 'overview':
-        return (
-          <OverviewDashboard
-            onNavigate={(tab) => {
-              setShowLearningWidget(false);
-              setActiveTab(tab);
-            }}
-          />
-        );
+        return <OverviewDashboard onNavigate={navigate} />;
       case 'chat':
         return (
           <ChatWorkspace
@@ -66,22 +65,21 @@ export const AppShell: React.FC = () => {
         return <ToolGateway />;
       case 'api':
         return <ApiDashboard />;
+      case 'docs':
+        return <DocsDashboard />;
       case 'settings':
         return <SettingsWorkspace />;
       default:
-        return <OverviewDashboard onNavigate={setActiveTab} />;
+        return <OverviewDashboard onNavigate={navigate} />;
     }
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-[#090D11] text-slate-900 dark:text-slate-100 overflow-hidden font-sans antialiased transition-colors">
+    <div className="flex h-screen bg-canvas text-primary overflow-hidden font-sans antialiased transition-colors duration-150">
       {/* Sidebar Navigation */}
       <Sidebar
-        activeTab={showLearningWidget ? ('overview' as any) : activeTab}
-        onTabChange={(tab) => {
-          setShowLearningWidget(false);
-          setActiveTab(tab);
-        }}
+        activeTab={showLearningWidget ? 'overview' : activeTab}
+        onTabChange={navigate}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         connected={intllm.connected}
@@ -95,39 +93,41 @@ export const AppShell: React.FC = () => {
         <Header
           currentModelId={intllm.currentModelId}
           onModelSelect={intllm.setCurrentModel}
-          onOpenSettings={() => {
-            setShowLearningWidget(false);
-            setActiveTab('settings');
-          }}
+          onOpenSettings={() => navigate('settings')}
           onOpenBackgroundLearning={() => setShowLearningWidget(!showLearningWidget)}
           isConnected={intllm.connected}
           models={intllm.models}
-          services={intllm.services}
           status={intllm.status}
           ollamaStatus={intllm.ollama?.status}
-          onOpenSystem={() => {
-            setShowLearningWidget(false);
-            setActiveTab('system');
-          }}
+          onOpenSystem={() => navigate('system')}
         />
 
         {/* Dynamic Page View */}
-        <main className="flex-1 overflow-hidden bg-slate-50 dark:bg-[#090D11] flex flex-col">
+        <main className="flex-1 overflow-hidden bg-canvas flex flex-col min-h-0">
           {/* Backend Offline banner — shown on every page until connected */}
           {!intllm.loading && !intllm.connected && (
-            <div className="flex items-center justify-between gap-3 px-4 py-2 bg-rose-950/40 border-b border-rose-800/40 text-rose-300 dark:text-rose-400 text-xs font-mono">
-              <span className="flex items-center gap-2">
-                <WifiOff className="w-3.5 h-3.5" />
-                INTLLM Backend Offline — cannot reach {intllm.endpointConfigured ? 'the configured INTLLM endpoint' : 'a valid endpoint (check VITE_INTLLM_BASE_URL)'}
+            <div
+              role="alert"
+              className="flex items-center justify-between gap-3 px-4 py-2 bg-error/10 border-b border-error/20 text-error text-xs font-mono"
+            >
+              <span className="flex items-center gap-2 min-w-0">
+                <WifiOff className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                <span className="truncate">
+                  INTLLM backend offline —{' '}
+                  {intllm.endpointConfigured
+                    ? 'cannot reach the configured endpoint'
+                    : 'no valid endpoint configured (check VITE_INTLLM_BASE_URL)'}
+                </span>
               </span>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => intllm.refresh()}
                 disabled={intllm.loading}
+                className="shrink-0"
               >
-                <Loader2 className={`w-3.5 h-3.5 ${intllm.loading ? 'animate-spin' : ''}`} />
-                Retry Connection
+                <Loader2 className={`w-3.5 h-3.5 ${intllm.loading ? 'animate-spin' : ''}`} aria-hidden />
+                Retry
               </Button>
             </div>
           )}

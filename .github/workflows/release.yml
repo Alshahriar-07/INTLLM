@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    name: Resolve + verify version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        run: |
+          VERSION="$(python3 -c "import re; print(re.search(r'__version__\s*=\s*\"([^\"]+)\"', open('backend/app/__init__.py').read()).group(1))")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "INTLLM version: $VERSION"
+      - name: Verify tag matches app.__version__
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          test "${GITHUB_REF_NAME}" = "v${{ steps.read.outputs.version }}" \
+            || { echo "tag ${GITHUB_REF_NAME} does not match v${{ steps.read.outputs.version }}"; exit 1; }
+
+  test:
+    name: Tests (release gate)
+    runs-on: ubuntu-latest
+    needs: [version]
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: intllm
+          POSTGRES_PASSWORD: intllm
+          POSTGRES_DB: intllm_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U intllm -d intllm_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      INTLLM_TEST_DATABASE_URL: postgresql+asyncpg://intllm:intllm@127.0.0.1:5432/intllm_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Backend install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "./backend[dev]"
+      - name: Backend lint
+        run: ruff check --config backend/pyproject.toml backend/app backend/tests build_windows.py scripts
+      - name: Backend tests
+        working-directory: backend
+        run: python -m pytest -q
+      - name: Frontend install + typecheck
+        run: |
+          npm ci
+          npm run lint
+
+  python-package:
+    name: Python wheel + sdist
+    runs-on: ubuntu-latest
+    needs: [version, test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip "build>=1.2.0"
+          python scripts/build_release.py --skip-windows --release-dir build/release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-package
+          path: build/release
+          retention-days: 7
+
+  windows-exe:
+    name: Windows x64 executable + installer
+    runs-on: windows-latest
+    needs: [version, test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Backend install (includes PyInstaller via build script)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "./backend[dev]"
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+        continue-on-error: true
+      - name: Build executable + installer
+        run: python scripts/build_release.py --skip-python --release-dir build/release
+      - name: Show artifacts
+        run: Get-ChildItem build/release
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: build/release
+          retention-days: 7
+
+  publish:
+    name: Validate + publish release
+    runs-on: ubuntu-latest
+    needs: [version, python-package, windows-exe]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Collect artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: build/release
+          merge-multiple: true
+      - name: Regenerate SHA256.txt from the final artifact set
+        run: python scripts/make_sha256.py build/release
+      - name: Validate artifacts + checksums + install
+        run: |
+          python scripts/validate_release.py build/release \
+            --require-exe --install-check || {
+              echo "Windows artifacts are required for a release; ensure the windows-exe job succeeded." >&2
+              exit 1
+            }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: intllm-${{ needs.version.outputs.version }}
+          path: build/release
+          retention-days: 30
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.version.outputs.version }}
+          name: INTLLM v${{ needs.version.outputs.version }}
+          files: build/release/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true

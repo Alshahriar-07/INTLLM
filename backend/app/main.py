@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
@@ -22,6 +22,7 @@ from app.core.metrics import metrics
 from app.db.session import get_database
 from app.services.background.service import get_background_service
 from app.services.browser.service import get_browser_service
+from app.services.system.db_init import inspect as inspect_database
 
 logger = get_logger(__name__)
 
@@ -38,7 +39,14 @@ async def lifespan(app: FastAPI):
     database = get_database()
     available, error = await database.ping()
     if available:
-        logger.info("postgres connected")
+        report = await inspect_database()
+        logger.info(
+            "postgres connected",
+            extra={"intllm_extra": {"database": report.as_dict()}},
+        )
+        if report.status != "running":
+            # Never pretend semantic memory works without pgvector.
+            logger.warning("database not ready", extra={"intllm_extra": report.as_dict()})
     else:
         # Start anyway and report status honestly rather than crashing.
         logger.warning("postgres unavailable at startup", extra={"intllm_extra": {"error": error}})
@@ -60,8 +68,10 @@ def create_app() -> FastAPI:
         version=__version__,
         description="Local-first AI runtime: memory, retrieval, tools and an OpenAI-compatible API.",
         lifespan=lifespan,
+        # Technical API schema stays available alongside the INTLLM Docs page.
         docs_url="/docs",
-        redoc_url=None,
+        redoc_url="/redoc",
+        openapi_url="/openapi.json",
     )
 
     app.add_middleware(
@@ -73,6 +83,27 @@ def create_app() -> FastAPI:
     )
 
     @app.middleware("http")
+    async def request_size_limit(request: Request, call_next):
+        """Reject oversized bodies early instead of buffering them."""
+        raw_length = request.headers.get("content-length")
+        if raw_length is not None:
+            try:
+                declared = int(raw_length)
+            except ValueError:
+                declared = max_bytes + 1
+            if declared > max_bytes:
+                return JSONResponse(
+                    status_code=413,
+                    content={
+                        "error": {
+                            "message": f"Request body exceeds the {max_bytes} byte limit",
+                            "type": "validation_error",
+                        }
+                    },
+                )
+        return await call_next(request)
+
+    @app.middleware("http")
     async def timing_middleware(request: Request, call_next):
         started = time.perf_counter()
         response = await call_next(request)
@@ -82,6 +113,7 @@ def create_app() -> FastAPI:
         response.headers["X-Process-Time-Ms"] = f"{duration:.2f}"
         return response
 
+    max_bytes = settings.intllm_max_request_bytes
     install_exception_handlers(app)
 
     app.include_router(api_router, prefix=settings.intllm_api_prefix)

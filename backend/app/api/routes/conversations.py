@@ -8,9 +8,15 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_session_required
-from app.core.errors import NotFoundError
+from app.core.errors import NotFoundError, ValidationError
 from app.db.repositories.conversations import ConversationRepository
-from app.schemas import ConversationCreate, ConversationDetailOut, ConversationOut, MessageOut
+from app.schemas import (
+    ConversationCreate,
+    ConversationDetailOut,
+    ConversationOut,
+    ConversationUpdate,
+    MessageOut,
+)
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -71,6 +77,22 @@ async def get_conversation(
         ],
     )
     return detail
+
+
+@router.patch("/{conversation_id}", response_model=ConversationOut)
+async def rename_conversation(
+    conversation_id: uuid.UUID,
+    body: ConversationUpdate,
+    session: AsyncSession = Depends(get_session_required),
+) -> ConversationOut:
+    """Rename a conversation (used by the chat history sidebar)."""
+    title = body.title.strip()
+    if not title:
+        raise ValidationError("Title must not be empty")
+    conversation = await ConversationRepository(session).rename(conversation_id, title)
+    if conversation is None:
+        raise NotFoundError(f"Conversation not found: {conversation_id}")
+    return _to_out(conversation)
 
 
 @router.delete("/{conversation_id}")

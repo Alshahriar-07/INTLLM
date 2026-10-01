@@ -10,8 +10,8 @@ from __future__ import annotations
 import statistics
 import time
 from collections import defaultdict, deque
-from contextlib import contextmanager
 from collections.abc import Iterator
+from contextlib import contextmanager
 
 _WINDOW = 500
 

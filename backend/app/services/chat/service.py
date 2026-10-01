@@ -8,6 +8,7 @@ events for the frontend and never fabricates retrieval or tool activity.
 from __future__ import annotations
 
 import dataclasses
+import os
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -16,7 +17,7 @@ from typing import Any
 
 from app.core.events import event_bus
 from app.core.logging import get_logger
-from app.db.models import Conversation, MemoryItem
+from app.db.models import MemoryItem
 from app.db.repositories.conversations import ConversationRepository
 from app.db.repositories.models import ModelRepository
 from app.db.session import get_database
@@ -52,10 +53,24 @@ class ChatRequest:
 
 
 class ChatService:
+    # Environment overrides for inference behaviour. INTLLM_OLLAMA_NUM_GPU=0
+    # forces CPU-only inference, which is the documented workaround when the
+    # machine's GPU runtime cannot allocate VRAM for a model.
+    _NUM_GPU = os.environ.get("INTLLM_OLLAMA_NUM_GPU")
+
     def __init__(self) -> None:
         self._adapter = get_ollama_adapter()
         self._brain = get_brain_service()
         self._web = get_web_service()
+
+    def _effective_options(self, options: dict[str, Any] | None) -> dict[str, Any] | None:
+        merged = dict(options) if options else {}
+        if self._NUM_GPU is not None and self._NUM_GPU.strip() != "" and "num_gpu" not in merged:
+            try:
+                merged["num_gpu"] = int(self._NUM_GPU)
+            except ValueError:
+                pass
+        return merged or None
 
     async def resolve_model(self, requested: str | None) -> str:
         from app.config.settings import get_settings
@@ -211,7 +226,9 @@ class ChatService:
 
             accumulated: list[str] = []
             model_error: str | None = None
-            async for chunk in self._adapter.chat(model, context, options=request.options or None):
+            async for chunk in self._adapter.chat(
+                model, context, options=self._effective_options(request.options)
+            ):
                 if chunk.type == "delta":
                     accumulated.append(chunk.content)
                     yield {"type": "assistant.delta", "data": {"content": chunk.content}}
@@ -286,7 +303,9 @@ class ChatService:
         context = self._build_context(request.messages, [], [])
         pieces: list[str] = []
         metrics: dict[str, Any] = {}
-        async for chunk in self._adapter.chat(model, context, options=request.options or None):
+        async for chunk in self._adapter.chat(
+            model, context, options=self._effective_options(request.options)
+        ):
             if chunk.type == "delta":
                 pieces.append(chunk.content)
             elif chunk.type == "done":

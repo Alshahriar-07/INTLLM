@@ -62,3 +62,11 @@ async def stream_system(interval: float = 3.0) -> StreamingResponse:
 @router.get("/system/time")
 async def server_time() -> dict[str, str]:
     return {"time": datetime.now(timezone.utc).isoformat()}
+
+
+@router.get("/system/database")
+async def database_status() -> dict[str, object]:
+    """Honest PostgreSQL / pgvector / schema readiness for the local install."""
+    from app.services.system.db_init import inspect
+
+    return (await inspect()).as_dict()

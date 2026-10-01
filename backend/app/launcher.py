@@ -25,13 +25,17 @@ import time
 import webbrowser
 from pathlib import Path
 
-from app.core.logging import configure_logging, get_logger
+from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 APP_NAME = "INTLLM"
 HEALTH_TIMEOUT_SECONDS = 45.0
 HEALTH_POLL_SECONDS = 0.4
+# /api/health probes PostgreSQL and Ollama; when Ollama is unreachable its
+# connect probe can take several seconds, so the request timeout must be well
+# above that or the readiness waiter never sees the (valid) 200/503 response.
+HEALTH_REQUEST_TIMEOUT_SECONDS = 10.0
 
 
 # --- Application directories ---------------------------------------------------
@@ -96,6 +100,29 @@ def _init_file_logging(settings, logs_dir: Path) -> None:
     logging.getLogger().addHandler(handler)
 
 
+# --- Database bootstrap ---------------------------------------------------------
+
+
+def _bootstrap_database() -> None:
+    """Initialize the local PostgreSQL schema before the server starts.
+
+    PostgreSQL and pgvector stay external, honestly reported dependencies: an
+    unavailable database does not crash the app, it is surfaced with the exact
+    remediation step. Schema creation is real DDL (Alembic, or SQLAlchemy
+    metadata when Alembic is not bundled into the frozen executable).
+    """
+    from app.services.system.db_init import initialize_database
+
+    report = initialize_database()
+    logger.info("database bootstrap", extra={"intllm_extra": report.as_dict()})
+    if report.status != "running":
+        print(f"[INTLLM] Database: {report.status}")
+        if report.detail:
+            print(f"[INTLLM]   {report.detail}")
+        for action in report.actions:
+            print(f"[INTLLM]   -> {action}")
+
+
 # --- Port utilities -------------------------------------------------------------
 
 
@@ -110,7 +137,7 @@ def _looks_like_intllm(base_url: str) -> bool:
     try:
         import httpx
 
-        response = httpx.get(f"{base_url}/api/health", timeout=3.0)
+        response = httpx.get(f"{base_url}/api/health", timeout=HEALTH_REQUEST_TIMEOUT_SECONDS)
         if response.status_code in (200, 503):
             payload = response.json()
             return payload.get("service") == "intllm" or "services" in payload
@@ -188,7 +215,7 @@ def _serve_frontend_once_ready(base_url: str) -> None:
     while time.monotonic() < deadline:
         try:
             with urllib.request.urlopen(  # noqa: S310 - loopback, fixed URL scheme
-                f"{base_url}/api/health", timeout=3.0
+                f"{base_url}/api/health", timeout=HEALTH_REQUEST_TIMEOUT_SECONDS
             ) as response:
                 if response.status in (200, 503):
                     ui_url = f"{base_url}/app/"
@@ -213,7 +240,28 @@ def _serve_frontend_once_ready(base_url: str) -> None:
     )
 
 
+HELP_TEXT = """INTLLM - local-first AI runtime with an OpenAI-compatible API.
+
+Usage:
+  INTLLM-windows-x64.exe                 start the runtime and open the web UI
+  INTLLM-windows-x64.exe --version       print the version and exit
+  INTLLM-windows-x64.exe --help          print this help and exit
+
+Configuration is via INTLLM_* environment variables (see README).
+PostgreSQL and Ollama are external local dependencies that INTLLM detects
+and reports honestly; neither is bundled or silently installed.
+"""
+
+
 def main() -> int:
+    argv = sys.argv[1:]
+    if "--version" in argv or "-V" in argv:
+        print(f"INTLLM {_version()}")
+        return 0
+    if "--help" in argv or "-h" in argv:
+        print(HELP_TEXT)
+        return 0
+
     from app.config.settings import get_settings
 
     settings = get_settings()
@@ -224,6 +272,8 @@ def main() -> int:
         "INTLLM starting",
         extra={"intllm_extra": {"version": _version(), "data_dir": str(dirs["root"])}},
     )
+
+    _bootstrap_database()
 
     port, notice = _resolve_port_conflict(settings)
     base_url = f"http://{settings.intllm_host}:{port}"
@@ -246,6 +296,12 @@ def main() -> int:
             host=settings.intllm_host,
             port=port,
             log_level=settings.intllm_log_level.lower(),
+            # Pure-Python HTTP protocol: httptools' C extension does not
+            # survive PyInstaller onefile bundling reliably and can accept
+            # connections without ever answering them. h11 is dependable.
+            http="h11",
+            # SSE only; no WebSocket upgrade needed by the current frontend.
+            ws="websockets" if _ws_available() else None,
             # The exe is a console app; Ctrl+C or closing the window shuts down.
             lifespan="on",
         )
@@ -253,6 +309,15 @@ def main() -> int:
         pass
     logger.info("INTLLM stopped")
     return 0
+
+
+def _ws_available() -> bool:
+    try:
+        import websockets  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
 
 
 def _version() -> str:

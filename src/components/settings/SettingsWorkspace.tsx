@@ -1,224 +1,435 @@
 import React, { useState } from 'react';
-import { useTheme } from '../../hooks/use-theme';
-import { INTLLM_BASE_URL, API_BASE, OPENAI_BASE, OLLAMA_DEFAULT_URL, POLLING_INTERVAL_MS, CONNECTION_TIMEOUT_MS } from '../../lib/api/client';
-import { 
-  Settings, 
-  ShieldCheck, 
-  Cpu, 
-  Brain, 
-  Globe, 
-  Compass, 
-  Wrench, 
-  Key, 
-  Zap, 
+import { useTheme, Theme } from '../../hooks/use-theme';
+import {
+  API_BASE,
+  CONNECTION_TIMEOUT_MS,
+  INTLLM_BASE_URL,
+  OLLAMA_DEFAULT_URL,
+  OPENAI_BASE,
+  POLLING_INTERVAL_MS
+} from '../../lib/api/client';
+import {
+  Activity,
+  Brain,
+  Compass,
+  Cpu,
+  Globe,
+  Key,
+  Laptop,
+  Monitor,
+  Moon,
+  Server,
+  ShieldCheck,
   SlidersHorizontal,
-  HardDrive,
-  Lock,
-  Server
+  Sun,
+  Wrench
 } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { Switch } from '../ui/Switch';
 import { Button } from '../ui/Button';
+import { useIntllm } from '../../hooks/use-intllm';
+import { cn } from '../../lib/utils';
+
+type SectionId =
+  | 'general'
+  | 'appearance'
+  | 'models'
+  | 'ollama'
+  | 'memory'
+  | 'internet'
+  | 'browser'
+  | 'tools'
+  | 'api'
+  | 'security'
+  | 'advanced';
+
+const SECTIONS: { id: SectionId; label: string; icon: React.ReactNode }[] = [
+  { id: 'general', label: 'General', icon: <SlidersHorizontal className="w-4 h-4" /> },
+  { id: 'appearance', label: 'Appearance', icon: <Sun className="w-4 h-4" /> },
+  { id: 'models', label: 'Models', icon: <Cpu className="w-4 h-4" /> },
+  { id: 'ollama', label: 'Ollama', icon: <Server className="w-4 h-4" /> },
+  { id: 'memory', label: 'Memory', icon: <Brain className="w-4 h-4" /> },
+  { id: 'internet', label: 'Internet', icon: <Globe className="w-4 h-4" /> },
+  { id: 'browser', label: 'Browser', icon: <Compass className="w-4 h-4" /> },
+  { id: 'tools', label: 'Tools', icon: <Wrench className="w-4 h-4" /> },
+  { id: 'api', label: 'API', icon: <Key className="w-4 h-4" /> },
+  { id: 'security', label: 'Security', icon: <ShieldCheck className="w-4 h-4" /> },
+  { id: 'advanced', label: 'Advanced', icon: <Activity className="w-4 h-4" /> }
+];
+
+const THEME_OPTIONS: { value: Theme; label: string; icon: React.ReactNode }[] = [
+  { value: 'light', label: 'Light', icon: <Sun className="w-4 h-4" /> },
+  { value: 'dark', label: 'Dark', icon: <Moon className="w-4 h-4" /> },
+  { value: 'system', label: 'System', icon: <Monitor className="w-4 h-4" /> }
+];
+
+/** A titled setting row with optional trailing control. */
+const SettingRow: React.FC<{
+  title: string;
+  description?: string;
+  children?: React.ReactNode;
+  last?: boolean;
+}> = ({ title, description, children, last }) => (
+  <div className={cn('flex items-center justify-between gap-4 py-3', !last && 'border-b border-border')}>
+    <div className="min-w-0">
+      <h3 className="text-sm font-medium text-primary">{title}</h3>
+      {description && <p className="text-xs text-secondary mt-0.5 leading-relaxed">{description}</p>}
+    </div>
+    {children && <div className="shrink-0">{children}</div>}
+  </div>
+);
+
+const SectionTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <h2 className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">{children}</h2>
+);
 
 export const SettingsWorkspace: React.FC = () => {
   const { theme, setTheme } = useTheme();
-  const [activeSection, setActiveSection] = useState<'privacy' | 'general' | 'runtime' | 'models' | 'brain' | 'web' | 'browser' | 'tools' | 'api' | 'performance' | 'advanced'>('privacy');
+  const intllm = useIntllm();
+  const [activeSection, setActiveSection] = useState<SectionId>('general');
 
-  // Local state toggles
+  // Local preference toggles (UI-level; runtime policy remains server-side).
   const [localOnly, setLocalOnly] = useState(true);
   const [telemetry, setTelemetry] = useState(false);
   const [autoOllama, setAutoOllama] = useState(true);
   const [l0Caching, setL0Caching] = useState(true);
   const [webVerification, setWebVerification] = useState(true);
 
-  const sections = [
-    { id: 'privacy', label: 'Privacy & Local Data', icon: <ShieldCheck className="w-4 h-4 text-emerald-400" /> },
-    { id: 'general', label: 'General & UI', icon: <Settings className="w-4 h-4 text-cyan-400" /> },
-    { id: 'runtime', label: 'Runtime & Connection', icon: <Server className="w-4 h-4 text-emerald-400" /> },
-    { id: 'models', label: 'Model Engine & Ollama', icon: <Cpu className="w-4 h-4 text-cyan-400" /> },
-    { id: 'brain', label: 'Brain & Vector Storage', icon: <Brain className="w-4 h-4 text-purple-400" /> },
-    { id: 'web', label: 'Live Web Retrieval', icon: <Globe className="w-4 h-4 text-emerald-400" /> },
-    { id: 'browser', label: 'Browser Agent Sandboxing', icon: <Compass className="w-4 h-4 text-cyan-400" /> },
-    { id: 'tools', label: 'Tools Gateway Policies', icon: <Wrench className="w-4 h-4 text-amber-400" /> },
-    { id: 'api', label: 'Local API Configuration', icon: <Key className="w-4 h-4 text-amber-400" /> },
-    { id: 'performance', label: 'Performance & Hardware', icon: <Zap className="w-4 h-4 text-amber-400" /> },
-    { id: 'advanced', label: 'Advanced & Diagnostics', icon: <SlidersHorizontal className="w-4 h-4 text-slate-600 dark:text-slate-400" /> }
-  ] as const;
+  const runtimeRows: { label: string; value: string }[] = [
+    { label: 'Backend URL (VITE_INTLLM_BASE_URL)', value: INTLLM_BASE_URL ?? 'not configured' },
+    { label: 'API base', value: API_BASE ?? 'unavailable' },
+    { label: 'OpenAI-compatible base', value: OPENAI_BASE ?? 'unavailable' },
+    { label: 'Ollama URL (backend-managed)', value: OLLAMA_DEFAULT_URL },
+    { label: 'Connection timeout', value: `${CONNECTION_TIMEOUT_MS} ms` },
+    { label: 'Polling interval', value: `${POLLING_INTERVAL_MS} ms` }
+  ];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto overflow-y-auto max-h-[calc(100vh-3.5rem)] space-y-6">
-      {/* Header */}
-      <div className="border-b border-slate-300 dark:border-[#21262D] pb-4">
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl font-bold font-mono tracking-tight text-slate-900 dark:text-slate-100">SYSTEM SETTINGS</h1>
-          <Badge variant="cyan">LOCAL PREFERENCES</Badge>
-        </div>
-        <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-          Configure INTLLM local AI runtime behavior, memory routing, security gateways, and hardware resource limits.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {/* Settings Navigation Sidebar */}
-        <div className="space-y-1">
-          {sections.map((sec) => (
-            <button
-              key={sec.id}
-              onClick={() => setActiveSection(sec.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded text-xs font-mono transition-colors text-left ${
-                activeSection === sec.id
-                  ? 'bg-cyan-100 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800 font-semibold'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:bg-[#161B22]'
-              }`}
-            >
-              {sec.icon}
-              <span>{sec.label}</span>
-            </button>
-          ))}
+    <div className="flex-1 overflow-y-auto">
+      <div className="max-w-5xl mx-auto px-4 md:px-6 py-6">
+        {/* Header */}
+        <div className="border-b border-border pb-4 mb-5">
+          <h1 className="text-xl font-semibold tracking-tight text-primary">Settings</h1>
+          <p className="text-xs text-secondary mt-1">
+            Local runtime behavior, appearance, memory routing, and hardware limits. Preferences are stored on this
+            machine only.
+          </p>
         </div>
 
-        {/* Settings Content Area */}
-        <div className="md:col-span-3 space-y-6">
-          {/* Privacy Section */}
-          {activeSection === 'privacy' && (
-            <div className="space-y-4">
-              <Card className="p-5 border-emerald-500/30 bg-slate-50 dark:bg-[#0A0D12] space-y-3">
-                <div className="flex items-center gap-2 text-emerald-400 font-bold font-mono text-sm">
-                  <Lock className="w-4 h-4" /> LOCAL-FIRST GUARANTEE
+        <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-6">
+          {/* Section navigation */}
+          <nav className="space-y-0.5 md:sticky md:top-0 self-start" aria-label="Settings sections">
+            {SECTIONS.map((sec) => (
+              <button
+                key={sec.id}
+                onClick={() => setActiveSection(sec.id)}
+                aria-current={activeSection === sec.id ? 'true' : undefined}
+                className={cn(
+                  'w-full flex items-center gap-2.5 h-8 px-2.5 rounded-md text-[13px] transition-colors text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                  activeSection === sec.id
+                    ? 'bg-panel-hover text-primary font-medium'
+                    : 'text-secondary hover:text-primary hover:bg-panel-hover'
+                )}
+              >
+                <span className={cn(activeSection === sec.id ? 'text-accent' : 'text-muted')}>{sec.icon}</span>
+                <span>{sec.label}</span>
+              </button>
+            ))}
+          </nav>
+
+          {/* Section content */}
+          <div className="space-y-4 min-w-0">
+            {/* General */}
+            {activeSection === 'general' && (
+              <Card className="p-4">
+                <SectionTitle>General</SectionTitle>
+                <SettingRow
+                  title="Automatic Ollama launch"
+                  description="Start the local Ollama service automatically when INTLLM opens."
+                >
+                  <Switch checked={autoOllama} onChange={setAutoOllama} />
+                </SettingRow>
+                <SettingRow
+                  title="Background maintenance"
+                  description="Allow low-priority memory upkeep while the runtime is idle."
+                  last
+                >
+                  <Badge variant="outline">Managed by runtime</Badge>
+                </SettingRow>
+              </Card>
+            )}
+
+            {/* Appearance */}
+            {activeSection === 'appearance' && (
+              <Card className="p-4">
+                <SectionTitle>Appearance</SectionTitle>
+                <SettingRow title="Theme" description="Applied instantly and remembered on this device.">
+                  <div className="flex items-center gap-1 p-0.5 rounded-md border border-border bg-canvas" role="radiogroup" aria-label="Theme">
+                    {THEME_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        role="radio"
+                        aria-checked={theme === opt.value}
+                        onClick={() => setTheme(opt.value)}
+                        className={cn(
+                          'flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                          theme === opt.value
+                            ? 'bg-panel-hover text-primary'
+                            : 'text-muted hover:text-primary'
+                        )}
+                      >
+                        {opt.icon}
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </SettingRow>
+                <SettingRow
+                  title="Reduced motion"
+                  description="Follows your operating system accessibility setting automatically."
+                  last
+                >
+                  <Badge variant="outline">System</Badge>
+                </SettingRow>
+              </Card>
+            )}
+
+            {/* Models */}
+            {activeSection === 'models' && (
+              <Card className="p-4 space-y-3">
+                <SectionTitle>Models</SectionTitle>
+                <div className="flex items-center justify-between py-2 border-b border-border">
+                  <div>
+                    <h3 className="text-sm font-medium text-primary">Installed models</h3>
+                    <p className="text-xs text-secondary mt-0.5">
+                      {intllm.models.filter((m) => m.installed).length} model(s) available via Ollama
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => intllm.refresh()}>
+                    Refresh
+                  </Button>
                 </div>
-                <p className="text-xs text-slate-800 dark:text-slate-200 font-sans leading-relaxed">
-                  <strong>Your conversations, model weights, embeddings, and vector memory stay strictly on this device by default.</strong> INTLLM does not transmit private chat prompts or stored memories to external cloud services or telemetry servers.
+                {intllm.models.length === 0 ? (
+                  <p className="text-xs text-muted py-2">
+                    {intllm.modelsError ?? 'No models detected. Pull a model in the Models workspace.'}
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {intllm.models.map((m) => (
+                      <div
+                        key={m.id}
+                        className="flex items-center justify-between gap-3 px-3 py-2 rounded-md border border-border bg-canvas text-xs"
+                      >
+                        <span className="font-mono text-primary truncate">{m.name}</span>
+                        <span className="flex items-center gap-2 text-muted font-mono shrink-0">
+                          {m.parameterSize && <span>{m.parameterSize}</span>}
+                          {m.installed ? (
+                            <Badge variant="emerald" size="sm" dot>
+                              Ready
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" size="sm">
+                              Not installed
+                            </Badge>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {/* Ollama */}
+            {activeSection === 'ollama' && (
+              <Card className="p-4 space-y-3">
+                <SectionTitle>Ollama</SectionTitle>
+                <SettingRow
+                  title="Daemon endpoint"
+                  description="Managed by the INTLLM backend; change via backend configuration."
+                  last
+                >
+                  <code className="text-xs font-mono text-secondary">{OLLAMA_DEFAULT_URL}</code>
+                </SettingRow>
+                {intllm.ollama && (
+                  <div className="space-y-1.5 text-xs font-mono">
+                    <div className="flex justify-between px-3 py-2 rounded-md bg-canvas border border-border">
+                      <span className="text-secondary">Status</span>
+                      <span className={intllm.ollama.status === 'running' ? 'text-success' : 'text-warning'}>
+                        {intllm.ollama.status}
+                      </span>
+                    </div>
+                    <div className="flex justify-between px-3 py-2 rounded-md bg-canvas border border-border">
+                      <span className="text-secondary">Version</span>
+                      <span className="text-primary">{intllm.ollama.version ?? '—'}</span>
+                    </div>
+                    <div className="flex justify-between px-3 py-2 rounded-md bg-canvas border border-border">
+                      <span className="text-secondary">Models installed</span>
+                      <span className="text-primary">{intllm.ollama.modelCount ?? '—'}</span>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {/* Memory */}
+            {activeSection === 'memory' && (
+              <Card className="p-4">
+                <SectionTitle>Memory</SectionTitle>
+                <SettingRow
+                  title="L0 Flash Brain micro-caching"
+                  description="Sub-15ms vector routing before querying the L2 PostgreSQL store."
+                >
+                  <Switch checked={l0Caching} onChange={setL0Caching} />
+                </SettingRow>
+                <SettingRow
+                  title="Background learning"
+                  description="Low-priority memory maintenance; always yields to interactive requests."
+                  last
+                >
+                  <Badge variant="outline">P3 · yields to chat</Badge>
+                </SettingRow>
+              </Card>
+            )}
+
+            {/* Internet */}
+            {activeSection === 'internet' && (
+              <Card className="p-4">
+                <SectionTitle>Internet</SectionTitle>
+                <SettingRow
+                  title="Strict source verification"
+                  description="Filter web search results with trust scores below 80%."
+                >
+                  <Switch checked={webVerification} onChange={setWebVerification} />
+                </SettingRow>
+                <SettingRow
+                  title="Gateway status"
+                  description="Live web retrieval availability reported by the runtime."
+                  last
+                >
+                  <Badge variant={intllm.services?.web?.status === 'connected' ? 'emerald' : 'outline'} dot>
+                    {intllm.services?.web?.status === 'connected' ? 'Connected' : 'Unavailable'}
+                  </Badge>
+                </SettingRow>
+              </Card>
+            )}
+
+            {/* Browser */}
+            {activeSection === 'browser' && (
+              <Card className="p-4">
+                <SectionTitle>Browser</SectionTitle>
+                <SettingRow
+                  title="Sandboxed browser agent"
+                  description="Automation runs in an isolated Playwright context with per-action permissions."
+                  last
+                >
+                  <Badge variant={intllm.services?.browser?.status === 'connected' ? 'emerald' : 'outline'} dot>
+                    {intllm.services?.browser?.status === 'connected' ? 'Connected' : 'Unavailable'}
+                  </Badge>
+                </SettingRow>
+              </Card>
+            )}
+
+            {/* Tools */}
+            {activeSection === 'tools' && (
+              <Card className="p-4">
+                <SectionTitle>Tools</SectionTitle>
+                <SettingRow
+                  title="Permission gateway"
+                  description="Each tool declares a risk level; high-risk actions require approval."
+                  last
+                >
+                  <Badge variant="outline">Policy: require-approval</Badge>
+                </SettingRow>
+              </Card>
+            )}
+
+            {/* API */}
+            {activeSection === 'api' && (
+              <Card className="p-4 space-y-3">
+                <SectionTitle>API</SectionTitle>
+                <div className="flex items-center justify-between py-2 border-b border-border">
+                  <div>
+                    <h3 className="text-sm font-medium text-primary">Local API</h3>
+                    <p className="text-xs text-secondary mt-0.5">
+                      INTLLM's own OpenAI-compatible gateway. Keys are INTLLM keys, not Ollama.
+                    </p>
+                  </div>
+                  <Badge variant={intllm.connected ? 'emerald' : 'outline'} dot>
+                    {intllm.connected ? 'Running' : 'Offline'}
+                  </Badge>
+                </div>
+                <SettingRow
+                  title="Endpoint"
+                  description="Point any OpenAI-compatible client at this base URL."
+                >
+                  <code className="text-xs font-mono text-secondary">{OPENAI_BASE ?? 'unavailable'}</code>
+                </SettingRow>
+                <SettingRow
+                  title="Authentication"
+                  description="Send the key as a Bearer token or x-api-key header."
+                  last
+                >
+                  <code className="text-xs font-mono text-secondary">Authorization: Bearer sk-intllm-…</code>
+                </SettingRow>
+                <p className="text-[11px] text-muted">
+                  Manage keys in the API workspace. Secrets are shown exactly once at creation;
+                  only a hash is stored. Open the Docs page for full endpoint reference.
                 </p>
               </Card>
+            )}
 
-              <Card className="p-4 space-y-4 border-slate-300 dark:border-[#21262D]">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-bold text-xs font-mono text-slate-900 dark:text-slate-100">Enforce Strict Local Storage Only</h3>
-                    <p className="text-[11px] text-slate-600 dark:text-slate-400">Prevents any external API connections except explicit live web searches.</p>
-                  </div>
+            {/* Security */}
+            {activeSection === 'security' && (
+              <Card className="p-4 space-y-1">
+                <SectionTitle>Security</SectionTitle>
+                <SettingRow
+                  title="Strict local storage only"
+                  description="Prevents any external API connections except explicit live web searches."
+                >
                   <Switch checked={localOnly} onChange={setLocalOnly} />
-                </div>
-
-                <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-[#1C2128]">
-                  <div>
-                    <h3 className="font-bold text-xs font-mono text-slate-900 dark:text-slate-100">Anonymous Diagnostics & Crash Reports</h3>
-                    <p className="text-[11px] text-slate-600 dark:text-slate-400">Opt-in telemetry for hardware detection debugging.</p>
-                  </div>
+                </SettingRow>
+                <SettingRow
+                  title="Anonymous diagnostics"
+                  description="Opt-in telemetry for hardware detection debugging. Off by default."
+                  last
+                >
                   <Switch checked={telemetry} onChange={setTelemetry} />
+                </SettingRow>
+                <div className="mt-3 flex items-start gap-2 p-3 rounded-md bg-success/5 border border-success/20">
+                  <ShieldCheck className="w-4 h-4 text-success shrink-0 mt-0.5" aria-hidden />
+                  <p className="text-xs text-secondary leading-relaxed">
+                    Conversations, model weights, embeddings, and vector memory stay strictly on this device by
+                    default. Nothing is transmitted to cloud services unless live web retrieval is explicitly enabled
+                    for a message.
+                  </p>
                 </div>
               </Card>
-            </div>
-          )}
+            )}
 
-          {/* General Section */}
-          {activeSection === 'general' && (
-            <Card className="p-4 space-y-4 border-slate-300 dark:border-[#21262D]">
-              <h2 className="text-xs font-bold font-mono text-slate-800 dark:text-slate-200">GENERAL INTERFACE SETTINGS</h2>
-              
-              <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-[#1C2128]">
-                <div>
-                  <h3 className="font-bold text-xs font-mono text-slate-900 dark:text-slate-100">Application Theme</h3>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400">Select your preferred color scheme.</p>
+            {/* Advanced */}
+            {activeSection === 'advanced' && (
+              <Card className="p-4 space-y-3">
+                <SectionTitle>Advanced</SectionTitle>
+                <div className="space-y-1.5 font-mono text-xs">
+                  {runtimeRows.map((row) => (
+                    <div
+                      key={row.label}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 px-3 py-2 rounded-md bg-canvas border border-border"
+                    >
+                      <span className="text-secondary">{row.label}</span>
+                      <span className="text-primary break-all">{row.value}</span>
+                    </div>
+                  ))}
                 </div>
-                <select
-                  className="bg-slate-50 dark:bg-[#0A0D12] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-[#21262D] rounded px-2 py-1 text-xs font-mono"
-                  value={theme}
-                  onChange={(e) => {
-                    const val = e.target.value as 'dark' | 'light' | 'system';
-                    setTheme(val);
-                  }}
-                >
-                  <option value="dark">Dark Mode</option>
-                  <option value="light">Light Mode</option>
-                  <option value="system">System Default</option>
-                </select>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-bold text-xs font-mono text-slate-900 dark:text-slate-100">Automatic Ollama Daemon Launch</h3>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400">Starts local Ollama service automatically when INTLLM opens.</p>
-                </div>
-                <Switch checked={autoOllama} onChange={setAutoOllama} />
-              </div>
-            </Card>
-          )}
-
-          {/* Runtime Section — read-only view of the real configuration */}
-          {activeSection === 'runtime' && (
-            <Card className="p-4 space-y-4 border-slate-300 dark:border-[#21262D]">
-              <h2 className="text-xs font-bold font-mono text-slate-800 dark:text-slate-200">RUNTIME & CONNECTION</h2>
-              <p className="text-[11px] text-slate-600 dark:text-slate-400 font-sans">
-                Environment variables are the source of truth. Values are read at build/start time
-                from <span className="font-mono">VITE_INTLLM_*</span>; secrets are never exposed here.
-              </p>
-              <div className="space-y-2 font-mono text-xs">
-                {[
-                  { label: 'Backend URL (VITE_INTLLM_BASE_URL)', value: INTLLM_BASE_URL ?? 'not configured (invalid port)' },
-                  { label: 'API Base', value: API_BASE ?? 'unavailable' },
-                  { label: 'OpenAI-compatible Base', value: OPENAI_BASE ?? 'unavailable' },
-                  { label: 'Ollama URL (backend-managed)', value: OLLAMA_DEFAULT_URL },
-                  { label: 'Connection Timeout', value: `${CONNECTION_TIMEOUT_MS} ms` },
-                  { label: 'Polling Interval', value: `${POLLING_INTERVAL_MS} ms` }
-                ].map((row) => (
-                  <div
-                    key={row.label}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 px-3 py-2 rounded bg-slate-100 dark:bg-[#161B22] border border-slate-200 dark:border-[#21262D]"
-                  >
-                    <span className="text-slate-600 dark:text-slate-400">{row.label}</span>
-                    <span className="text-slate-900 dark:text-slate-100 break-all">{row.value}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-[11px] text-slate-500 font-mono">
-                Note: 240426 (supplied runtime port) is not a valid TCP port and is rejected by
-                configuration validation. Valid range is 1–65535.
-              </p>
-            </Card>
-          )}
-
-          {/* Brain Section */}
-          {activeSection === 'brain' && (
-            <Card className="p-4 space-y-4 border-slate-300 dark:border-[#21262D]">
-              <h2 className="text-xs font-bold font-mono text-slate-800 dark:text-slate-200">LAYERED BRAIN CONFIGURATION</h2>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-bold text-xs font-mono text-slate-900 dark:text-slate-100">L0 Flash Brain Micro-Caching</h3>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400">Enables sub-15ms vector index routing before querying L2 PostgreSQL.</p>
-                </div>
-                <Switch checked={l0Caching} onChange={setL0Caching} />
-              </div>
-            </Card>
-          )}
-
-          {/* Web Section */}
-          {activeSection === 'web' && (
-            <Card className="p-4 space-y-4 border-slate-300 dark:border-[#21262D]">
-              <h2 className="text-xs font-bold font-mono text-slate-800 dark:text-slate-200">LIVE WEB RETRIEVAL SETTINGS</h2>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-bold text-xs font-mono text-slate-900 dark:text-slate-100">Strict Source Domain Verification</h3>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400">Filters web search results with trust scores below 80%.</p>
-                </div>
-                <Switch checked={webVerification} onChange={setWebVerification} />
-              </div>
-            </Card>
-          )}
-
-          {/* Other Sections Fallback Container */}
-          {!['privacy', 'general', 'runtime', 'brain', 'web'].includes(activeSection) && (
-            <Card className="p-6 space-y-3 border-slate-300 dark:border-[#21262D]">
-              <h2 className="text-sm font-bold font-mono text-slate-900 dark:text-slate-100 capitalize">{activeSection} Configuration</h2>
-              <p className="text-xs text-slate-600 dark:text-slate-400 font-mono">
-                Local preference settings for {activeSection} are active and enforced by INTLLM runtime defaults.
-              </p>
-              <Button variant="outline" size="sm" onClick={() => alert('Preferences saved locally')}>
-                Save Preferences
-              </Button>
-            </Card>
-          )}
+                <p className="text-[11px] text-muted">
+                  Environment variables are the source of truth and are read at build/start time. Secrets are never
+                  exposed here.
+                </p>
+              </Card>
+            )}
+          </div>
         </div>
       </div>
     </div>

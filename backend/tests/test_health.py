@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import httpx
 import pytest
-
 from app.db.session import Database
 from app.main import app
 from app.services.runtime.ollama import OllamaAdapter

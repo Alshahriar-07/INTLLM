@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
-
 from app.config.settings import Settings
+from pydantic import ValidationError
 
 
 def test_default_port_is_plan_value():

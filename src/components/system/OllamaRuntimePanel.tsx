@@ -18,12 +18,12 @@ const STATE_META: Record<
   OllamaRuntimeState,
   { label: string; dot: string; badge: 'emerald' | 'amber' | 'rose' | 'cyan' | 'outline' }
 > = {
-  running: { label: 'Running', dot: 'bg-emerald-400', badge: 'emerald' },
-  stopped: { label: 'Stopped', dot: 'bg-slate-400', badge: 'outline' },
-  starting: { label: 'Starting…', dot: 'bg-cyan-400 animate-pulse', badge: 'cyan' },
-  stopping: { label: 'Stopping…', dot: 'bg-amber-400 animate-pulse', badge: 'amber' },
-  unavailable: { label: 'Unavailable', dot: 'bg-amber-400', badge: 'amber' },
-  error: { label: 'Error', dot: 'bg-rose-400', badge: 'rose' }
+  running: { label: 'Running', dot: 'bg-success', badge: 'emerald' },
+  stopped: { label: 'Stopped', dot: 'bg-muted', badge: 'outline' },
+  starting: { label: 'Starting…', dot: 'bg-accent animate-pulse', badge: 'cyan' },
+  stopping: { label: 'Stopping…', dot: 'bg-warning animate-pulse', badge: 'amber' },
+  unavailable: { label: 'Unavailable', dot: 'bg-warning', badge: 'amber' },
+  error: { label: 'Error', dot: 'bg-error', badge: 'rose' }
 };
 
 const formatBytes = (bytes?: number | null): string => {
@@ -65,21 +65,21 @@ export const OllamaRuntimePanel: React.FC = () => {
   const lastChecked = ollama?.lastChecked ? new Date(ollama.lastChecked) : null;
 
   return (
-    <Card className="p-4 space-y-4 border-slate-200 dark:border-[#21262D] bg-white dark:bg-[#0A0D12]">
+    <Card className="p-4 space-y-4 border-border bg-surface">
       {/* Panel header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${meta.dot}`} />
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold font-mono text-slate-900 dark:text-slate-100">
+              <h2 className="text-sm font-bold font-mono text-primary">
                 OLLAMA RUNTIME
               </h2>
               <Badge variant={meta.badge} size="sm">
                 {meta.label}
               </Badge>
             </div>
-            <span className="text-[11px] text-slate-500 font-mono">
+            <span className="text-[11px] text-muted font-mono">
               {ollama?.endpoint ?? 'http://127.0.0.1:11434'}
             </span>
           </div>
@@ -136,7 +136,7 @@ export const OllamaRuntimePanel: React.FC = () => {
 
       {/* Real error surfaced by the backend */}
       {(ollamaError || ollama?.reason) && !running && (
-        <div className="flex items-start gap-2 p-2.5 rounded bg-rose-950/30 border border-rose-800/40 text-[11px] font-mono text-rose-400">
+        <div className="flex items-start gap-2 p-2.5 rounded bg-error/5 border border-error/25 text-[11px] font-mono text-error">
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
           <span className="break-words">{ollamaError || ollama?.reason}</span>
         </div>
@@ -144,25 +144,25 @@ export const OllamaRuntimePanel: React.FC = () => {
 
       {/* Details — only real values; N/A when the daemon does not report one */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
-        <div className="p-2.5 bg-slate-100 dark:bg-[#161B22] border border-slate-200 dark:border-slate-800 rounded space-y-0.5">
-          <div className="text-[10px] text-slate-500 flex items-center gap-1">
+        <div className="p-2.5 bg-panel-hover border border-border rounded space-y-0.5">
+          <div className="text-[10px] text-muted flex items-center gap-1">
             <CircleDot className="w-3 h-3" /> Version
           </div>
-          <div className="text-slate-800 dark:text-slate-200 truncate">
+          <div className="text-primary truncate">
             {running ? ollama?.version ?? 'N/A' : 'N/A'}
           </div>
         </div>
-        <div className="p-2.5 bg-slate-100 dark:bg-[#161B22] border border-slate-200 dark:border-slate-800 rounded space-y-0.5">
-          <div className="text-[10px] text-slate-500 flex items-center gap-1">
+        <div className="p-2.5 bg-panel-hover border border-border rounded space-y-0.5">
+          <div className="text-[10px] text-muted flex items-center gap-1">
             <Server className="w-3 h-3" /> Models
           </div>
-          <div className="text-slate-800 dark:text-slate-200">
+          <div className="text-primary">
             {running ? ollama?.modelCount ?? 'N/A' : 'N/A'}
           </div>
         </div>
-        <div className="p-2.5 bg-slate-100 dark:bg-[#161B22] border border-slate-200 dark:border-slate-800 rounded space-y-0.5">
-          <div className="text-[10px] text-slate-500">Loaded Models</div>
-          <div className="text-slate-800 dark:text-slate-200 truncate">
+        <div className="p-2.5 bg-panel-hover border border-border rounded space-y-0.5">
+          <div className="text-[10px] text-muted">Loaded Models</div>
+          <div className="text-primary truncate">
             {running
               ? ollama?.loadedModels?.length
                 ? ollama.loadedModels.map((m) => m.name).join(', ')
@@ -170,15 +170,15 @@ export const OllamaRuntimePanel: React.FC = () => {
               : 'N/A'}
           </div>
         </div>
-        <div className="p-2.5 bg-slate-100 dark:bg-[#161B22] border border-slate-200 dark:border-slate-800 rounded space-y-0.5">
-          <div className="text-[10px] text-slate-500">Memory (VRAM)</div>
-          <div className="text-slate-800 dark:text-slate-200">
+        <div className="p-2.5 bg-panel-hover border border-border rounded space-y-0.5">
+          <div className="text-[10px] text-muted">Memory (VRAM)</div>
+          <div className="text-primary">
             {running && ollama?.memory ? formatBytes(ollama.memory.vramUsedBytes) : 'N/A'}
           </div>
         </div>
       </div>
 
-      <div className="text-[10px] text-slate-500 font-mono">
+      <div className="text-[10px] text-muted font-mono">
         Last checked:{' '}
         {lastChecked && !Number.isNaN(lastChecked.getTime())
           ? lastChecked.toLocaleTimeString()

@@ -1,15 +1,14 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 import { ActivityStep, Message, WebSource } from '../../types';
 import { ChatMessages } from './ChatMessages';
 import { ChatComposer } from './ChatComposer';
-import { AlertCircle, Cpu } from 'lucide-react';
-import { chatService } from '../../lib/services/chatService';
-
-export interface ChatWorkspaceProps {
-  currentModelId: string;
-  onModelSelect: (modelId: string) => void;
-  isConnected?: boolean;
-}
+import { ConversationList } from './ConversationList';
+import { ModelSelector } from '../ui/ModelSelector';
+import { Button } from '../ui/Button';
+import { chatService, ConversationSummary } from '../../lib/services/chatService';
+import { useIntllm } from '../../hooks/use-intllm';
+import { cn } from '../../lib/utils';
 
 const uid = () => Math.random().toString(36).slice(2, 11);
 
@@ -57,22 +56,100 @@ function activityFromEvent(type: string, data: any): ActivityStep | null {
   }
 }
 
+export interface ChatWorkspaceProps {
+  currentModelId: string;
+  onModelSelect: (modelId: string) => void;
+  isConnected?: boolean;
+}
+
 export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
   currentModelId,
-  onModelSelect: _onModelSelect,
+  onModelSelect,
   isConnected = false
 }) => {
+  const intllm = useIntllm();
+
+  // --- conversation state -------------------------------------------------
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [conversationsLoading, setConversationsLoading] = useState(true);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [query, setQuery] = useState('');
+  const [listOpen, setListOpen] = useState(true);
+
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<(() => void) | null>(null);
-  const conversationIdRef = useRef<string | null>(null);
   const assistantIdRef = useRef<string | null>(null);
 
-  const updateAssistant = useCallback((updater: (msg: Message) => Message) => {
-    setMessages((prev) =>
-      prev.map((m) => (m.id === assistantIdRef.current ? updater(m) : m))
+  const refreshConversations = useCallback(async () => {
+    setConversationsLoading(true);
+    const list = await chatService.listConversations();
+    setConversations(list);
+    setConversationsLoading(false);
+  }, []);
+
+  // Load persisted history on mount and whenever the backend reconnects.
+  useEffect(() => {
+    if (intllm.loading) return;
+    if (intllm.connected) {
+      refreshConversations();
+    } else {
+      setConversationsLoading(false);
+    }
+  }, [intllm.connected, intllm.loading, refreshConversations]);
+
+  const openConversation = useCallback(async (id: string) => {
+    abortRef.current?.();
+    abortRef.current = null;
+    setIsStreaming(false);
+    setError(null);
+    setActiveId(id);
+    setLoadingMessages(true);
+    const history = await chatService.getConversationMessages(id);
+    setMessages(
+      history.map((m) => ({
+        ...m,
+        isStreaming: false
+      }))
     );
+    setLoadingMessages(false);
+  }, []);
+
+  const startNewChat = useCallback(() => {
+    abortRef.current?.();
+    abortRef.current = null;
+    setIsStreaming(false);
+    setError(null);
+    setActiveId(null);
+    setMessages([]);
+  }, []);
+
+  const handleRename = useCallback(async (id: string, title: string) => {
+    const ok = await chatService.renameConversation(id, title);
+    if (ok) {
+      setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)));
+    }
+  }, []);
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      const ok = await chatService.deleteConversation(id);
+      if (ok) {
+        setConversations((prev) => prev.filter((c) => c.id !== id));
+        if (activeId === id) {
+          setActiveId(null);
+          setMessages([]);
+        }
+      }
+    },
+    [activeId]
+  );
+
+  // --- streaming ----------------------------------------------------------
+  const updateAssistant = useCallback((updater: (msg: Message) => Message) => {
+    setMessages((prev) => prev.map((m) => (m.id === assistantIdRef.current ? updater(m) : m)));
   }, []);
 
   const handleSend = useCallback(
@@ -108,21 +185,18 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
         {
           messages: history,
           model: currentModelId || undefined,
-          conversation_id: conversationIdRef.current,
+          conversation_id: activeId,
           use_brain: options.useBrain,
           use_web: options.useWeb
         },
         {
-          onDelta: (content) =>
-            updateAssistant((m) => ({ ...m, content: m.content + content })),
+          onDelta: (content) => updateAssistant((m) => ({ ...m, content: m.content + content })),
           onActivity: (type, data) => {
             const step = activityFromEvent(type, data);
             if (!step) return;
             updateAssistant((m) => {
               const activities = [...(m.activities ?? [])];
-              const idx = activities.findIndex(
-                (a) => a.type === step.type && a.status === 'running'
-              );
+              const idx = activities.findIndex((a) => a.type === step.type && a.status === 'running');
               if (idx >= 0 && step.status !== 'running') activities[idx] = step;
               else activities.push(step);
               return { ...m, activities };
@@ -135,10 +209,18 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
               content: m.content,
               isStreaming: false,
               sources,
-              memoryUsed: data?.memory_used ?? 0,
-              activities: m.activities
+              memoryUsed: data?.memory_used ?? 0
             }));
-            if (data?.conversation_id) conversationIdRef.current = data.conversation_id;
+            const completedId: string | null = data?.conversation_id ?? null;
+            if (completedId && !activeId) {
+              // First exchange in a new chat: adopt the server-created id and
+              // refresh the list so the new conversation appears immediately.
+              setActiveId(completedId);
+              refreshConversations();
+            } else if (completedId) {
+              // Keep the sidebar ordering fresh after each exchange.
+              refreshConversations();
+            }
             setIsStreaming(false);
             abortRef.current = null;
           },
@@ -151,7 +233,7 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
         }
       );
     },
-    [currentModelId, isConnected, messages, updateAssistant]
+    [activeId, currentModelId, isConnected, messages, refreshConversations, updateAssistant]
   );
 
   const handleStop = useCallback(() => {
@@ -161,41 +243,124 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
     updateAssistant((m) => ({ ...m, isStreaming: false }));
   }, [updateAssistant]);
 
-  return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)] bg-slate-50 dark:bg-[#090D11]">
-      {/* Top Context Bar */}
-      <div className="h-10 border-b border-slate-200 dark:border-[#21262D] px-4 flex items-center justify-between bg-white dark:bg-[#0D1117] text-xs font-mono text-slate-500 select-none">
-        <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1.5">
-            <Cpu className="w-3.5 h-3.5" />
-            {isConnected ? currentModelId || 'No model selected' : 'No model loaded'}
-          </span>
-          {messages.length > 0 && <span>{messages.length} messages</span>}
-        </div>
+  // Cleanup in-flight streams when the workspace unmounts.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.();
+    };
+  }, []);
 
-        <div className="flex items-center gap-2 text-[11px]">
-          {error ? (
-            <span className="flex items-center gap-1.5 text-rose-500">
-              <AlertCircle className="w-3.5 h-3.5" />
-              {error}
-            </span>
-          ) : (
-            <span className={isStreaming ? 'text-cyan-500' : 'text-slate-500'}>
-              {isStreaming
-                ? 'Streaming…'
-                : isConnected
-                  ? 'Runtime connected'
-                  : 'Connect INTLLM runtime to start chatting'}
-            </span>
-          )}
-        </div>
+  const activeConversation = conversations.find((c) => c.id === activeId);
+
+  return (
+    <div className="flex flex-1 min-h-0">
+      {/* Conversation History Sidebar */}
+      <div
+        className={cn(
+          'h-full shrink-0 border-r border-border bg-panel flex flex-col transition-[width] duration-150 overflow-hidden',
+          listOpen ? 'w-64' : 'w-0 border-r-0'
+        )}
+        aria-hidden={!listOpen}
+      >
+        {listOpen && (
+          <ConversationList
+            conversations={conversations}
+            activeId={activeId}
+            loading={conversationsLoading}
+            query={query}
+            onQueryChange={setQuery}
+            onSelect={openConversation}
+            onNew={startNewChat}
+            onRename={handleRename}
+            onDelete={handleDelete}
+          />
+        )}
       </div>
 
-      {/* Messages Stream */}
-      <ChatMessages messages={messages} isConnected={isConnected} />
+      {/* Chat column */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Chat header */}
+        <div className="h-11 shrink-0 border-b border-border bg-canvas px-3 flex items-center justify-between gap-2 select-none">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <button
+              type="button"
+              onClick={() => setListOpen((v) => !v)}
+              aria-label={listOpen ? 'Hide conversation history' : 'Show conversation history'}
+              aria-expanded={listOpen}
+              title={listOpen ? 'Hide history' : 'Show history'}
+              className="p-1.5 rounded-md text-muted hover:text-primary hover:bg-panel-hover transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                {listOpen ? (
+                  <>
+                    <path d="M6 3v10" strokeLinecap="round" />
+                    <path d="M3 5.5 5.5 8 3 10.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <rect x="9" y="3" width="4" height="10" rx="1" />
+                  </>
+                ) : (
+                  <>
+                    <path d="M6 3v10" strokeLinecap="round" />
+                    <path d="M5.5 5.5 3 8l2.5 2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <rect x="9" y="3" width="4" height="10" rx="1" />
+                  </>
+                )}
+              </svg>
+            </button>
+            <h2 className="text-sm font-medium text-primary truncate max-w-[220px] sm:max-w-xs">
+              {activeConversation ? activeConversation.title : 'New chat'}
+            </h2>
+            {loadingMessages && <Loader2 className="w-3.5 h-3.5 text-muted animate-spin" aria-hidden />}
+          </div>
 
-      {/* Composer */}
-      <ChatComposer isConnected={isConnected} isStreaming={isStreaming} onSend={handleSend} onStop={handleStop} />
+          <div className="flex items-center gap-2 shrink-0">
+            {error ? (
+              <span className="hidden md:flex items-center gap-1.5 text-xs text-error max-w-[280px] truncate" title={error}>
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                {error}
+              </span>
+            ) : isStreaming ? (
+              <span className="hidden md:flex items-center gap-1.5 text-xs text-accent">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Streaming…
+              </span>
+            ) : null}
+
+            <ModelSelector
+              currentModelId={currentModelId}
+              onModelSelect={onModelSelect}
+              models={intllm.models}
+              connected={isConnected}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={refreshConversations}
+              title="Refresh conversation list"
+              aria-label="Refresh conversation list"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Messages */}
+        {loadingMessages ? (
+          <div className="flex-1 flex items-center justify-center gap-2 text-xs text-muted font-mono">
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+            Loading conversation…
+          </div>
+        ) : (
+          <ChatMessages
+            messages={messages}
+            isConnected={isConnected}
+            isStreaming={isStreaming}
+            conversationKey={activeId ?? 'new'}
+          />
+        )}
+
+        {/* Composer */}
+        <ChatComposer isConnected={isConnected} isStreaming={isStreaming} onSend={handleSend} onStop={handleStop} />
+      </div>
     </div>
   );
 };

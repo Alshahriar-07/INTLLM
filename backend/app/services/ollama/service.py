@@ -62,7 +62,6 @@ class OllamaControlService:
             }
 
         version: str | None = None
-        models: list[dict[str, Any]] = []
         model_count: int | None = None
         loaded: list[dict[str, Any]] = []
         memory: dict[str, Any] | None = None
@@ -78,21 +77,9 @@ class OllamaControlService:
             logger.warning("ollama version probe failed", extra={"intllm_extra": {"error": str(exc)}})
 
         try:
-            live = await adapter.list_models()
-            model_count = len(live)
-            models = [
-                {
-                    "name": m.name,
-                    "sizeBytes": m.size_bytes,
-                    "parameterSize": m.parameter_size,
-                    "family": m.family,
-                    "quantization": m.quantization,
-                }
-                for m in live
-            ]
+            model_count = len(await adapter.list_models())
         except Exception as exc:  # noqa: BLE001
             logger.warning("ollama model listing failed", extra={"intllm_extra": {"error": str(exc)}})
-            models = []
 
         # Real loaded-model info (Ollama exposes this in /api/ps when models
         # are resident in memory); empty when nothing is loaded.

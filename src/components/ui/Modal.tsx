@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Button } from './Button';
@@ -22,12 +22,16 @@ export const Modal: React.FC<ModalProps> = ({
   footer,
   maxWidth = 'md'
 }) => {
+  const closeRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     if (isOpen) {
       document.addEventListener('keydown', handleKeyDown);
+      // Focus the close button so focus lives inside the dialog while open.
+      requestAnimationFrame(() => closeRef.current?.focus());
     }
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
@@ -42,30 +46,38 @@ export const Modal: React.FC<ModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className={cn(
-        'w-full bg-[#0D1117] border border-[#21262D] rounded-lg shadow-2xl flex flex-col max-h-[90vh] overflow-hidden',
-        widthClasses[maxWidth]
-      )}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 animate-fade-in"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={cn(
+          'w-full bg-elevated border border-border rounded-xl shadow-lg flex flex-col max-h-[90vh] overflow-hidden animate-modal-in',
+          widthClasses[maxWidth]
+        )}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#21262D]">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
           <div>
-            <h3 className="text-base font-semibold text-slate-100">{title}</h3>
-            {description && <p className="text-xs text-slate-400 mt-0.5">{description}</p>}
+            <h3 className="text-sm font-semibold text-primary">{title}</h3>
+            {description && <p className="text-xs text-secondary mt-0.5">{description}</p>}
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close modal">
-            <X className="w-4 h-4 text-slate-400 hover:text-slate-100" />
+          <Button ref={closeRef} variant="ghost" size="icon" onClick={onClose} aria-label="Close dialog">
+            <X className="w-4 h-4" />
           </Button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 overflow-y-auto flex-1 text-sm text-slate-200">
-          {children}
-        </div>
+        <div className="p-5 overflow-y-auto flex-1 text-sm text-primary">{children}</div>
 
         {/* Modal Footer */}
         {footer && (
-          <div className="flex items-center justify-end gap-3 px-5 py-3 border-t border-[#21262D] bg-[#161B22]/50">
+          <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-panel">
             {footer}
           </div>
         )}

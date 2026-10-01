@@ -5,12 +5,11 @@ Build (from the repo root):
     python build_windows.py
 
 or manually:
-    cd backend && pyinstaller --noconfirm --distpath ../dist --workpath ../build ..\\INTLLM.spec
+    cd backend && pyinstaller --noconfirm --distpath ../build/release --workpath ../build/intllm INTLLM.spec
 
 The spec bundles:
   - the real FastAPI backend (app package, uvicorn, sqlalchemy, asyncpg, psutil)
   - the production frontend build (dist/ -> frontend/ inside the exe)
-  - hidden imports required by uvicorn/sqlalchemy/asyncpg
 
 Ollama and PostgreSQL are NOT bundled: they are external local dependencies
 that INTLLM detects and reports honestly.
@@ -21,7 +20,6 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 block_cipher = None
 
 hiddenimports = [
-    *collect_submodules("uvicorn"),
     "uvicorn.logging",
     "uvicorn.loops.auto",
     "uvicorn.loops.asyncio",
@@ -49,6 +47,20 @@ datas = [
 # Package metadata some libraries probe at runtime.
 datas += collect_data_files("pydantic")
 
+# uvicorn's httptools C extension misbehaves when frozen (accepts connections
+# but never answers them); the launcher forces h11, so the httptools protocol
+# module is excluded from the bundle entirely.
+excludes = [
+    "tkinter",
+    "matplotlib",
+    "numpy",
+    "pytest",
+    "playwright",
+    "pynvml",
+    "alembic",
+    "uvicorn.protocols.http.httptools_impl",
+]
+
 a = Analysis(
     ["app/launcher.py"],
     pathex=["."],
@@ -58,15 +70,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        "tkinter",
-        "matplotlib",
-        "numpy",
-        "pytest",
-        "playwright",
-        "pynvml",
-        "alembic",
-    ],
+    excludes=excludes,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -82,7 +86,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name="INTLLM",
+    name="INTLLM-windows-x64",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

@@ -24,6 +24,15 @@ export interface ChatStreamCallbacks {
   onClose?: () => void;
 }
 
+/** Conversation summary as returned by GET /api/conversations. */
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  model?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface ConversationDto {
   id: string;
   title: string;
@@ -33,21 +42,43 @@ interface ConversationDto {
 }
 
 export const chatService = {
-  async getConversationHistory(): Promise<ChatServiceResponse> {
-    const result = await apiRequest<ConversationDto[]>('/conversations');
-    if (!result.ok || !result.data) {
-      return { connected: false, messages: [], error: result.error };
-    }
-    // The list endpoint returns conversation summaries; message history is
-    // loaded per-conversation when selected. Return empty rather than faking.
-    return { connected: true, messages: [] };
+  /** List persisted conversations (summaries only, newest first). */
+  async listConversations(limit = 100): Promise<ConversationSummary[]> {
+    const result = await apiRequest<ConversationDto[]>(`/conversations?limit=${limit}`);
+    if (!result.ok || !result.data) return [];
+    return result.data;
   },
 
+  /** Load the full message history of one conversation. */
   async getConversationMessages(conversationId: string): Promise<Message[]> {
     const result = await apiRequest<{ messages: Message[] }>(
       `/conversations/${conversationId}`
     );
     return result.data?.messages ?? [];
+  },
+
+  /** Explicitly create an empty conversation (used by "New Chat"). */
+  async createConversation(title?: string, model?: string): Promise<ConversationSummary | null> {
+    const result = await apiRequest<ConversationDto>('/conversations', {
+      method: 'POST',
+      body: JSON.stringify({ title: title || null, model: model || null })
+    });
+    return result.ok ? (result.data ?? null) : null;
+  },
+
+  /** Rename a conversation via PATCH /conversations/{id}. */
+  async renameConversation(conversationId: string, title: string): Promise<boolean> {
+    const result = await apiRequest<ConversationDto>(`/conversations/${conversationId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title })
+    });
+    return result.ok;
+  },
+
+  /** Delete a conversation (cascades to its messages server-side). */
+  async deleteConversation(conversationId: string): Promise<boolean> {
+    const result = await apiRequest(`/conversations/${conversationId}`, { method: 'DELETE' });
+    return result.ok;
   },
 
   /**
