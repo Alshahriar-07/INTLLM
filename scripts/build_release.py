@@ -85,13 +85,27 @@ def find_iscc() -> str | None:
     return None
 
 
+def copy_installers(release_dir: Path) -> None:
+    """Copy the canonical installers into the release staging directory.
+
+    They are published as release assets (and hashed) alongside the binary
+    artifacts, exactly as served at https://intllm.vercel.app/install.*.
+    """
+    release_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("install.ps1", "install.sh"):
+        source = ROOT / "IRM_INSTALL" / name
+        if source.is_file():
+            shutil.copy2(source, release_dir / name)
+            print(f"=== Staged {name}")
+
+
 def build_setup_installer(release_dir: Path, version: str) -> None:
     """Build INTLLM-Setup.exe when Inno Setup's compiler is available."""
     iscc = find_iscc()
     if not iscc:
         print("=== Skipping INTLLM-Setup.exe (Inno Setup 'iscc' not found)")
         return
-    source_exe = release_dir / "INTLLM-windows-x64.exe"
+    source_exe = release_dir / "INTLLM.exe"
     if not source_exe.is_file():
         print("=== Skipping INTLLM-Setup.exe (portable exe not built)")
         return
@@ -127,6 +141,9 @@ def main(argv: list[str] | None = None) -> int:
     if not args.skip_windows:
         build_windows(release_dir)
         build_setup_installer(release_dir, version)
+
+    # Publish the canonical installers as release assets too.
+    copy_installers(release_dir)
 
     # The .iss writes next to the exe; make sure everything shares one directory.
     run([sys.executable, str(ROOT / "scripts" / "make_sha256.py"), str(release_dir)], ROOT)

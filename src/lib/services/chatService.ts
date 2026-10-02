@@ -13,6 +13,8 @@ export interface ChatStreamPayload {
   conversation_id?: string | null;
   use_brain?: boolean;
   use_web?: boolean;
+  mode?: 'chat' | 'agent';
+  workspace?: string | null;
 }
 
 export interface ChatStreamCallbacks {

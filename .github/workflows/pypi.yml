@@ -1,0 +1,160 @@
+name: Publish to PyPI
+
+# Publishes the `intllm` Python distribution to PyPI.
+#
+# Authentication uses PyPI **Trusted Publishing** (OIDC) — no API tokens are
+# stored in the repository. Configure the publisher on PyPI with:
+#   owner: Alshahriar-07 · repo: INTLLM · workflow: pypi.yml · environment: pypi
+#
+# Triggers:
+#   * a GitHub Release being published (the normal path — release.yml builds the
+#     GitHub Release, this workflow publishes the Python package)
+#   * manual dispatch (optionally to TestPyPI first)
+#
+# The publish step never runs if the version already exists on the target index,
+# so a re-run cannot publish a duplicate/broken version.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Publish target"
+        type: choice
+        default: testpypi
+        options:
+          - testpypi
+          - none
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build + test + validate sdist/wheel
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: intllm
+          POSTGRES_PASSWORD: intllm
+          POSTGRES_DB: intllm_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U intllm -d intllm_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      INTLLM_TEST_DATABASE_URL: postgresql+asyncpg://intllm:intllm@127.0.0.1:5432/intllm_test
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Resolve package version
+        id: version
+        run: |
+          VERSION="$(python3 -c "import re; print(re.search(r'__version__\s*=\s*\"([^\"]+)\"', open('backend/app/__init__.py').read()).group(1))")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "intllm version: $VERSION"
+
+      - name: Verify tag matches package version
+        if: github.event_name == 'release'
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          test "$TAG" = "${{ steps.version.outputs.version }}" \
+            || { echo "release tag ${GITHUB_REF_NAME} does not match package version ${{ steps.version.outputs.version }}"; exit 1; }
+
+      - name: Install backend + dev tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "./backend[dev]" "build>=1.2.0" "twine>=5.1.1"
+
+      - name: Backend tests (release gate)
+        working-directory: backend
+        run: python -m pytest -q
+
+      - name: Build sdist + wheel (PEP 517, isolated)
+        run: python -m build --outdir dist backend
+
+      - name: Validate distribution metadata + contents
+        run: |
+          python -m twine check dist/*
+          python - <<'PY'
+          import glob, tarfile, zipfile
+          wheels = glob.glob("dist/*.whl")
+          sdists = glob.glob("dist/*.tar.gz")
+          assert wheels, "no wheel produced"
+          assert sdists, "no sdist produced"
+          with zipfile.ZipFile(wheels[0]) as z:
+              names = z.namelist()
+              assert any(n.endswith("METADATA") for n in names), "wheel missing METADATA"
+              assert any(n.startswith("app/") for n in names), "wheel missing app package"
+          with tarfile.open(sdists[0]) as t:
+              assert any("pyproject.toml" in n for n in t.getnames()), "sdist missing pyproject.toml"
+          print("distribution validation OK:", wheels[0], sdists[0])
+          PY
+
+      - name: Verify wheel installs and the CLI runs
+        run: |
+          python -m venv /tmp/venv-check
+          /tmp/venv-check/bin/pip install --no-deps dist/*.whl
+          /tmp/venv-check/bin/intllm --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pypi-dist
+          path: dist/
+          retention-days: 7
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pypi-dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'release'
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pypi-dist
+          path: dist/
+      - name: Check the version is not already published
+        id: exists
+        run: |
+          VERSION="${{ needs.build.outputs.version }}"
+          if curl -fsSL "https://pypi.org/pypi/intllm/${VERSION}/json" >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "intllm ${VERSION} is already on PyPI; skipping publish."
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        if: steps.exists.outputs.already != 'true'

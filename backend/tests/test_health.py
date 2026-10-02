@@ -7,6 +7,7 @@ import pytest
 from app.db.session import Database
 from app.main import app
 from app.services.runtime.ollama import OllamaAdapter
+from app.services.system.db_init import DatabaseReport
 
 
 @pytest.fixture
@@ -31,9 +32,24 @@ async def _fake_ollama_down(self):
     return False, "connection refused"
 
 
+async def _fake_db_running():
+    return DatabaseReport(status="running", postgres=True, pgvector=True, schema=True)
+
+
+async def _fake_db_misconfigured():
+    return DatabaseReport(
+        status="misconfigured",
+        postgres=True,
+        pgvector=False,
+        schema=False,
+        detail="PostgreSQL is reachable but the pgvector extension is not available.",
+    )
+
+
 async def test_health_reports_connected(monkeypatch):
     monkeypatch.setattr(Database, "ping", _fake_ping_ok)
     monkeypatch.setattr(OllamaAdapter, "health", _fake_ollama_ok)
+    monkeypatch.setattr("app.api.routes.health.inspect_database", _fake_db_running)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://testserver"
     ) as client:
@@ -43,6 +59,20 @@ async def test_health_reports_connected(monkeypatch):
     assert body["status"] == "ok"
     assert body["services"]["postgres"]["status"] == "connected"
     assert body["services"]["ollama"]["status"] == "connected"
+
+
+async def test_health_degrades_when_pgvector_missing(monkeypatch):
+    monkeypatch.setattr(Database, "ping", _fake_ping_ok)
+    monkeypatch.setattr(OllamaAdapter, "health", _fake_ollama_ok)
+    monkeypatch.setattr("app.api.routes.health.inspect_database", _fake_db_misconfigured)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        response = await client.get("/api/health")
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["services"]["postgres"]["status"] == "degraded"
 
 
 async def test_health_degrades_when_postgres_down(monkeypatch):

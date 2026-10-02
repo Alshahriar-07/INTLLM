@@ -82,13 +82,13 @@ API:
 OpenAI-compatible local API (/v1)
 
 License:
-MIT
+PolyForm Noncommercial License 1.0.0
 
 Repository:
 https://github.com/Alshahriar-07/INTLLM
 
 Current Version:
-0.4.2 (single source of truth: backend/app/__init__.py)
+1.0.2 (single source of truth: backend/app/__init__.py)
 ```
 
 The distribution/CLI package is named `intllm`; the frontend package is `intllm-frontend`.
@@ -476,21 +476,29 @@ Configuration: `INTLLM_OLLAMA_URL` (default `http://127.0.0.1:11434`), `INTLLM_D
 
 ## 17. HARDWARE TIERS
 
-The project defines hardware **recommendation tiers** used in the Models workspace and the model registry:
+INTLLM classifies models, and makes hardware recommendations, by **parameter
+count** (v1.0.2 rules). The classification is consistent everywhere: the model
+list, model details, the Models workspace, the pull UI, recommendations, the
+backend registry metadata and the frontend labels.
+
+The three categories are:
 
 ```text
-Potato
-Nutral
-I Paid for My Whole PC
+Potato   — < 3B parameters   (code value: POTATO)
+Medium   — 3B to < 8B params  (code value: MEDIUM)
+High     — >= 8B parameters   (code value: HIGH)
 ```
 
-**Do NOT rename `Nutral`.** Note on spelling: the product specification uses `Nutral`; the shipped backend implementation (`backend/app/services/models/service.py`) and frontend type (`src/types/index.ts`) use the constant values `POTATO`, `NEUTRAL`, and `I PAID FOR MY WHOLE PC`. When writing website copy, use the human-readable labels `Potato`, `Nutral`, `I Paid for My Whole PC` as defined above, and mention code values only in technical contexts.
+These are **recommendation categories, not strict compatibility restrictions**:
 
-Explain that these are **recommendation categories, not strict compatibility restrictions**:
+- **Potato** — tiny models for low-end hardware / integrated graphics.
+- **Medium** — balanced models for everyday hardware.
+- **High** — larger models for high-end desktops and workstations; heavier agent
+  workflows.
 
-- **Potato** — low-end/iGPU/older hardware; prioritize small quantized models, low memory usage, smaller context. (Registry rule: models requiring < 6 GB memory.)
-- **Nutral** — balanced/mid-range hardware; 7B/14B-class options where hardware permits, moderate context. (Registry rule: 6–20 GB.)
-- **I Paid for My Whole PC** — high-end hardware; larger models, larger context, heavier agent workflows. (Registry rule: > 20 GB.)
+The classification comes from the Ollama-reported parameter size (for
+mixture-of-experts strings such as `8x7B`, the total magnitude is used). When a
+model reports no parameter size it is treated as **Medium**.
 
 Actual hardware detection (via `psutil` + `nvidia-smi` when present) may consider:
 
@@ -655,7 +663,7 @@ Official installation commands:
 irm https://intllm.vercel.app/install.ps1 | iex
 ```
 
-Downloads `INTLLM-windows-x64.exe` (or `INTLLM-Setup.exe` when `INTLLM_USE_SETUP=1` and the artifact is published), verifies its SHA256 against the release `SHA256.txt`, installs under `%LOCALAPPDATA%\Programs\INTLLM`, adds it to the user `PATH`, and creates a Start Menu shortcut. Runtime data lives separately in `%LOCALAPPDATA%\INTLLM` and is preserved across upgrades and uninstall.
+Downloads `INTLLM.exe` (or `INTLLM-Setup.exe` when `INTLLM_USE_SETUP=1` and the artifact is published), verifies its SHA256 against the release `SHA256.txt`, installs under `%LOCALAPPDATA%\Programs\INTLLM`, adds it to the user `PATH`, creates `intllm`/Start Menu/desktop shortcuts. Runtime data lives separately in `%LOCALAPPDATA%\INTLLM` and is preserved across upgrades and uninstall.
 
 ### Linux / macOS (bash)
 
@@ -845,7 +853,7 @@ Show the two official commands from §23 verbatim in code blocks, plus the exter
 Explain the local-first security model (§35): localhost binding, hashed keys, redacted logs, explicit opt-ins, tool permissions. No absolute-security claims.
 
 ### Footer
-Include: GitHub · Documentation · Releases · License (MIT) · Version (current version from §44). Link targets from §43.
+Include: GitHub · Documentation · Releases · License (PolyForm Noncommercial 1.0.0) · Version (current version from §44). Link targets from §43.
 
 **Do not write exaggerated marketing claims.**
 
@@ -1106,7 +1114,7 @@ Factual, non-benchmark implementation notes that may be stated:
 
 Concise roadmap from `INTLLM-PLAN/16-roadmap/ROADMAP.md` and the implemented state:
 
-### Current (implemented in 0.4.2)
+### Current (implemented in 1.0.2)
 
 - FastAPI backend, React/Vite web UI, PostgreSQL + pgvector, migrations, health checks
 - Ollama detection, model list/pull/delete, adapter, streaming chat, conversation persistence
@@ -1147,7 +1155,7 @@ project:
   website: https://intllm.vercel.app
   github: https://github.com/Alshahriar-07/INTLLM
   repository: https://github.com/Alshahriar-07/INTLLM.git
-  version: "0.4.2"
+  version: "1.0.2"
   status: development
 
 features:
@@ -1179,7 +1187,7 @@ cli:
   intllm-api: implemented
 
 packaging:
-  windows_exe: implemented            # INTLLM-windows-x64.exe (PyInstaller onefile, built by CI)
+  windows_exe: implemented            # INTLLM.exe (PyInstaller onefile, built by CI)
   windows_setup: implemented          # INTLLM-Setup.exe (Inno Setup; built when iscc available)
   wheel: implemented                  # intllm-<version>-py3-none-any.whl
   source_archive: implemented         # intllm-<version>.tar.gz
@@ -1187,7 +1195,7 @@ packaging:
   install_scripts: implemented        # install.ps1 / install.sh served from the site
 
 release:
-  current_version: "0.4.2"
+  current_version: "1.0.2"
   release_date: 2026-10-01
   first_public_release: v1.0.1        # designated by the project owner; see §53
   windows_x64: planned                # first tagged GitHub release
@@ -1196,7 +1204,7 @@ release:
   source_archive: planned
 ```
 
-> Note on `first_public_release: v1.0.1`: the project owner designated **v1.0.1** as the first official public release/tag (§53). The repository's authoritative version source currently reports **0.4.2**. Until a `v1.0.1` tag exists in the repository, the website must not claim v1.0.1 artifacts are downloadable; use "latest release" links that resolve dynamically (the installers resolve the latest release via the GitHub API, which makes them forward-compatible).
+> Note on `first_public_release: v1.0.1`: the project owner designated **v1.0.1** as the first official public release/tag (§53). The repository's authoritative version source currently reports **1.0.2**. Until a `v1.0.1` tag exists in the repository, the website must not claim v1.0.1 artifacts are downloadable; use "latest release" links that resolve dynamically (the installers resolve the latest release via the GitHub API, which makes them forward-compatible).
 
 ---
 
@@ -1312,7 +1320,7 @@ The website itself is served by Vercel (see `vercel.json`: the Vite app at the r
 Actual current project version (authoritative source `backend/app/__init__.py`, mirrored in `package.json`, `RELEASE.md`, `CHANGELOG.md`):
 
 ```text
-Current version: 0.4.2
+Current version: 1.0.2
 Release date:    2026-10-01
 Latest release URL: https://github.com/Alshahriar-07/INTLLM/releases/latest
 ```
@@ -1322,7 +1330,7 @@ Latest release URL: https://github.com/Alshahriar-07/INTLLM/releases/latest
 Artifact names (as built by `scripts/build_release.py` and the release workflow):
 
 ```text
-INTLLM-windows-x64.exe
+INTLLM.exe
 INTLLM-Setup.exe                  # built when Inno Setup's iscc is available
 intllm-<version>-py3-none-any.whl
 intllm-<version>.tar.gz
@@ -1335,7 +1343,7 @@ SHA256 availability: **yes** — a `SHA256.txt` manifest is generated for every 
 
 ```bash
 sha256sum -c SHA256.txt                    # Linux/macOS
-Get-FileHash .\INTLLM-windows-x64.exe -Algorithm SHA256   # Windows PowerShell
+Get-FileHash .\INTLLM.exe -Algorithm SHA256   # Windows PowerShell
 ```
 
 The version is single-sourced from `backend/app/__init__.py`; the release tag must match it (enforced by the release workflow).
@@ -1344,7 +1352,7 @@ The version is single-sourced from `backend/app/__init__.py`; the release tag mu
 
 ## 45. LICENSE
 
-**MIT License.** Copyright (c) 2026 Alshahriar-07. See [`LICENSE`](LICENSE).
+**PolyForm Noncommercial License 1.0.0.** Copyright © 2026 Al Shahriar Sowan. See [`LICENSE`](LICENSE).
 
 (The repository license file was read directly; do not assume any other license.)
 
@@ -1421,7 +1429,7 @@ Reusable canonical copy. Use verbatim or lightly edit without changing meaning.
 > The API binds to localhost by default; LAN exposure is an explicit opt-in. API keys are salted scrypt hashes with one-time reveal and revocation. Secrets are redacted from logs and never ship in frontend bundles. Tool and browser execution always passes through the permission gateway, and retrieved web content is treated as data, not instructions.
 
 **Footer:**
-> INTLLM · GitHub · Documentation · Releases · License (MIT) · v0.4.2 *(update with the current release)*
+> INTLLM · GitHub · Documentation · Releases · License (PolyForm Noncommercial 1.0.0) · v1.0.2 *(update with the current release)*
 
 **Docs intro:**
 > Everything INTLLM actually implements — the local OpenAI-compatible API, authentication, memory and tools. No unsupported endpoints are documented. (This sentence is the real intro line from the in-app Docs page.)
@@ -1589,7 +1597,7 @@ Release tag:
 v1.0.1
 ```
 
-Treat `v1.0.1` as the first public release version **unless the repository contains authoritative release metadata that explicitly supersedes this**. Current repository state: the authoritative version source reports `0.4.2` and no `v1.0.1` tag exists yet — so the website may state "first public release: v1.0.1" as the designated version, but must not present v1.0.1 artifacts as existing until the tag is published, and must not claim v1.0.1 contains features not present in the corresponding build.
+Treat `v1.0.1` as the first public release version **unless the repository contains authoritative release metadata that explicitly supersedes this**. Current repository state: the authoritative version source reports `1.0.2` — so the website may state "first public release: v1.0.1" as the designated version, but must not present v1.0.1 artifacts as existing until the tag is published, and must not claim v1.0.1 contains features not present in the corresponding build.
 
 The website must use this information consistently across:
 
@@ -1622,7 +1630,7 @@ project:
 release:
   first_public_release: v1.0.1
   first_public_tag: v1.0.1
-  current_code_version: "0.4.2"   # authoritative: backend/app/__init__.py
+  current_code_version: "1.0.2"   # authoritative: backend/app/__init__.py
 ```
 
 Do not invent a different first-release version.
@@ -1664,7 +1672,7 @@ The version is **single-sourced** from `backend/app/__init__.py` (`__version__`)
 - package metadata (`backend/pyproject.toml` dynamic version, `package.json`)
 - CLI (`intllm --version`)
 - API (`/api/health`, `/` meta endpoint, `/openapi.json`)
-- executable (`INTLLM-windows-x64.exe --version`)
+- executable (`INTLLM.exe --version`)
 - installer (`INTLLM-Setup.exe`, Inno Setup `AppVersion`)
 - wheel + source archive (`intllm-<version>-…`)
 - documentation (README, RELEASE.md, CHANGELOG.md, in-app Docs)

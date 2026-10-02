@@ -202,6 +202,21 @@ async def _initialize() -> DatabaseReport:
     return await inspect()
 
 
+async def initialize() -> DatabaseReport:
+    """Async wrapper around schema/data initialization (used at startup).
+
+    Safe to call from the FastAPI lifespan: it never raises, returning a report
+    that describes the real state instead.
+    """
+    try:
+        return await _initialize()
+    except Exception as exc:  # noqa: BLE001 - reported, never raised
+        return DatabaseReport(
+            status=STATUS_UNAVAILABLE,
+            detail=f"{type(exc).__name__}: {exc}",
+        )
+
+
 def initialize_database() -> DatabaseReport:
     """Synchronously initialize the database (used by the launcher).
 

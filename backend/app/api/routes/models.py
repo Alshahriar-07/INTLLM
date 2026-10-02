@@ -19,7 +19,7 @@ from app.schemas import (
     ModelRecommendation,
     ModelRecommendResponse,
 )
-from app.services.models.service import ModelService, tier_for_memory
+from app.services.models.service import ModelService, tier_for_parameters
 from app.services.runtime.base import RuntimeUnavailable
 
 router = APIRouter(prefix="/models", tags=["models"])
@@ -59,7 +59,7 @@ async def list_models(
                 parameterSize=info.parameter_size,
                 quantization=info.quantization,
                 memoryReqGB=ModelService._estimate_memory_gb(info),
-                tier=tier_for_memory(ModelService._estimate_memory_gb(info)),
+                tier=tier_for_parameters(info.parameter_size),
                 capabilities=info.capabilities,
                 installed=True,
                 family=info.family,

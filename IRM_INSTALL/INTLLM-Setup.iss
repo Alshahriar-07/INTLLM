@@ -1,7 +1,7 @@
 ; INTLLM Windows installer (Inno Setup 6.3+).
 ;
 ; Build (from this directory):
-;   ISCC.exe /DAppVersion=0.4.2 /DSourceExe=..\build\release\INTLLM-windows-x64.exe INTLLM-Setup.iss
+;   ISCC.exe /DAppVersion=1.0.2 /DSourceExe=..\build\release\INTLLM.exe INTLLM-Setup.iss
 ;
 ; Or from the repository root:
 ;   python scripts/build_release.py
@@ -21,7 +21,7 @@
   #define AppVersion "0.0.0"
 #endif
 #ifndef SourceExe
-  #define SourceExe "..\build\release\INTLLM-windows-x64.exe"
+  #define SourceExe "..\build\release\INTLLM.exe"
 #endif
 #ifndef OutputDir
   #define OutputDir "..\build\release"
@@ -35,7 +35,15 @@ AppId={{8F3A1C2D-5B6E-4F70-9A11-2C3D4E5F6A7B}
 AppName=INTLLM
 AppVersion={#AppVersion}
 AppVerName=INTLLM {#AppVersion}
-AppPublisher=INTLLM
+AppPublisher=Al Shahriar Sowan
+AppCopyright=Copyright (C) 2026 Al Shahriar Sowan
+LicenseFile=..\LICENSE
+VersionInfoVersion={#AppVersion}
+VersionInfoCompany=Al Shahriar Sowan
+VersionInfoDescription=INTLLM Setup
+VersionInfoProductName=INTLLM
+VersionInfoProductVersion={#AppVersion}
+VersionInfoCopyright=Copyright (C) 2026 Al Shahriar Sowan
 DefaultDirName={localappdata}\Programs\INTLLM
 DefaultGroupName=INTLLM
 DisableProgramGroupPage=yes
@@ -58,6 +66,9 @@ RestartApplications=no
 
 [Files]
 Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "INTLLM.exe"; Flags: ignoreversion
+; `intllm` command shim: forwards to INTLLM.exe so typing `intllm` in a new
+; terminal (after PATH refresh) launches the application.
+Source: "intllm.cmd"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\INTLLM"; Filename: "{app}\INTLLM.exe"; WorkingDir: "{app}"; IconFilename: "{app}\INTLLM.exe"
@@ -65,7 +76,8 @@ Name: "{group}\Uninstall INTLLM"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\INTLLM"; Filename: "{app}\INTLLM.exe"; WorkingDir: "{app}"; IconFilename: "{app}\INTLLM.exe"; Tasks: desktopicon
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
+; Desktop shortcut is created by default (the user can untick it).
+Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"; Flags: checkedonce
 
 [Run]
 ; Smoke-check the installed binary. It prints the version and exits.

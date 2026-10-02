@@ -77,6 +77,25 @@ class Settings(BaseSettings):
         default="./workspace", alias="INTLLM_FILESYSTEM_ALLOWLIST"
     )
 
+    # --- Agent mode / workspace -------------------------------------------
+    # The Agent's filesystem boundary is the user-selected workspace. Paths
+    # outside it are rejected; destructive operations require approval.
+    intllm_agent_terminal_enabled: bool = Field(
+        default=True, alias="INTLLM_AGENT_TERMINAL_ENABLED"
+    )
+    intllm_agent_terminal_timeout_seconds: float = Field(
+        default=60.0, alias="INTLLM_AGENT_TERMINAL_TIMEOUT_SECONDS"
+    )
+    intllm_agent_max_read_bytes: int = Field(
+        default=200_000, alias="INTLLM_AGENT_MAX_READ_BYTES"
+    )
+    intllm_agent_max_write_bytes: int = Field(
+        default=2_000_000, alias="INTLLM_AGENT_MAX_WRITE_BYTES"
+    )
+    intllm_agent_max_search_results: int = Field(
+        default=200, alias="INTLLM_AGENT_MAX_SEARCH_RESULTS"
+    )
+
     # --- Web retrieval -----------------------------------------------------
     intllm_web_provider: str = Field(default="duckduckgo", alias="INTLLM_WEB_PROVIDER")
     intllm_web_searxng_url: str = Field(default="", alias="INTLLM_WEB_SEARXNG_URL")

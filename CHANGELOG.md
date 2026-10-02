@@ -5,6 +5,72 @@ All notable changes to INTLLM are documented here. The format follows
 adheres to semantic versioning. The authoritative version lives in
 `backend/app/__init__.py`.
 
+## [1.0.2] — 2026-10-02
+
+Agent mode, parameter-based model classification, PostgreSQL readiness clarity,
+a production release pipeline and a license change.
+
+### Added
+- **Agent Mode** in Chat with a Chat/Agent mode control and a **workspace**
+  selector above the composer. The selected folder is the Agent's filesystem
+  boundary and is stored by the backend (`app_settings`), never frontend-only.
+- **Agent runtime** (`backend/app/services/agent`): sandboxed directory listing,
+  file read/search, file/dir creation, writes, deletes, moves and terminal
+  execution — each path resolved against the workspace and rejected when it
+  escapes it. Destructive/terminal operations require an explicit approval
+  decision with optional per-session grants; `allow_session` suppresses repeat
+  prompts for harmless repeated work. The workspace root cannot be deleted.
+- **Agent API** under `/api/agent` (status, workspace get/set/pick/clear,
+  `fs/*`, `terminal`, `permissions`).
+- **Hardware-based recommendations** using real `psutil`/`nvidia-smi` data
+  (CPU, RAM, GPU/VRAM, disk, OS); undetectable values render as `N/A`.
+- **Dedicated PyPI publishing workflow** (`.github/workflows/pypi.yml`) using
+  PyPI Trusted Publishing (OIDC) — build, test, `twine check`, distribution
+  content validation and a wheel install check before publishing.
+- `intllm` command shim (`IRM_INSTALL/intllm.cmd`) installed with the Windows
+  package so a new terminal can run `intllm`, `intllm --version` and
+  `intllm --help`.
+- Desktop shortcut created by default by the Inno Setup installer; Start Menu
+  shortcut retained.
+- `RELEASE_INFO.md` with the production artifact, testing and license summary.
+- Agent runtime tests (`test_agent.py`) and model-classification tests
+  (`test_model_tiers.py`).
+
+### Fixed
+- **PostgreSQL availability handling** — startup now initializes the schema
+  (Alembic or metadata DDL) and reports `connected` / `degraded` / `unavailable`
+  / `offline` instead of a bare online/offline flag.
+- **OpenAI-compatible API and API-key creation** — the `/v1` surface and key
+  management were correct but appeared broken when PostgreSQL was down; the
+  dependency is now surfaced clearly (`503`/`degraded`) rather than as a silent
+  failure. PostgreSQL remains the primary database (no SQLite fallback).
+- **Chat history** — server-side conversation/message persistence verified and
+  retained; history is restored on reload/reconnect.
+- **Installation behaviour** — desktop/Start Menu shortcuts, `intllm` shim,
+  correct shortcut targets and per-user PATH handling in both installers.
+
+### Changed
+- **Model classification is now parameter-count based everywhere**: `< 3B` →
+  **Potato**, `3B to < 8B` → **Medium**, `>= 8B` → **High** (backend registry,
+  recommendations, model list and the Models UI). The previous VRAM-based tiers
+  (`POTATO` / `NEUTRAL` / `I PAID FOR MY WHOLE PC`) are removed.
+- **Windows executable renamed** from `INTLLM-windows-x64.exe` to
+  `INTLLM.exe`; the release stages it alongside `INTLLM-Setup.exe`.
+- **Installation experience** — both `install.ps1` and `install.sh` were
+  rewritten with platform/architecture detection, real download/verify steps,
+  clear status output, and robust error handling.
+- **Licensing** — the project is now released under the **PolyForm
+  Noncommercial License 1.0.0** (previously MIT). Copyright © 2026 Al Shahriar
+  Sowan.
+- Version bumped to **1.0.2** across the Python package, frontend, CLI,
+  installers and documentation.
+
+### Documentation
+- Rewrote `README.md` for the 1.0.2 release; added `RELEASE_INFO.md`,
+  `INTLLM-PLAN/07-tools-browser/AGENT_WORKSPACE.md` and
+  `INTLLM-PLAN/13-packaging/PYPI_PUBLISHING.md`; updated model-tier, licensing
+  and version references.
+
 ## [0.4.2] — 2026-10-01
 
 Production packaging, local API hardening, documentation and release
@@ -76,7 +142,7 @@ engineering.
   files removed and the plan directory no longer ignored.
 
 ### Documentation
-- Project is licensed under the **MIT License** (`LICENSE`).
+- At 0.4.2 the project was licensed under the MIT License (`LICENSE`); it was relicensed to the **PolyForm Noncommercial License 1.0.0** in 1.0.2.
 - README, RELEASE.md, the in-app Docs page and this changelog describe only
   implemented functionality. No embedding, responses, audio or image endpoints
   are claimed, and no third-party CLI compatibility is claimed without a

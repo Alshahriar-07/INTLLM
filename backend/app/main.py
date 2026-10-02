@@ -22,7 +22,7 @@ from app.core.metrics import metrics
 from app.db.session import get_database
 from app.services.background.service import get_background_service
 from app.services.browser.service import get_browser_service
-from app.services.system.db_init import inspect as inspect_database
+from app.services.system.db_init import initialize as initialize_database
 
 logger = get_logger(__name__)
 
@@ -39,7 +39,9 @@ async def lifespan(app: FastAPI):
     database = get_database()
     available, error = await database.ping()
     if available:
-        report = await inspect_database()
+        # Verify PostgreSQL + pgvector and apply the schema (Alembic or
+        # metadata DDL). Failures never crash startup; they are reported.
+        report = await initialize_database()
         logger.info(
             "postgres connected",
             extra={"intllm_extra": {"database": report.as_dict()}},

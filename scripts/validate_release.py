@@ -72,7 +72,7 @@ def check_names(release_dir: Path, require_exe: bool) -> None:
     print(f"  sdist:  {sdists[0].name}")
 
     if require_exe:
-        for name in ("INTLLM-windows-x64.exe", "INTLLM-Setup.exe"):
+        for name in ("INTLLM.exe", "INTLLM-Setup.exe"):
             if not (release_dir / name).is_file():
                 fail(f"required Windows artifact is missing: {name}")
             print(f"  exe:    {name}")

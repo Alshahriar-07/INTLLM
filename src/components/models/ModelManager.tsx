@@ -215,46 +215,44 @@ export const ModelManager: React.FC = () => {
           >
             <div className="flex items-center justify-between">
               <span className="font-bold text-warning text-xs">POTATO</span>
-              <Badge variant="amber" size="sm">&lt; 6 GB</Badge>
+              <Badge variant="amber" size="sm">&lt; 3B params</Badge>
             </div>
             <p className="text-[11px] text-muted font-sans mt-1">
-              Optimized for integrated graphics &amp; low VRAM.
+              Tiny models for low-end hardware &amp; integrated graphics.
             </p>
           </button>
 
           <button
-            onClick={() => setActiveTier(activeTier === 'NEUTRAL' ? 'ALL' : 'NEUTRAL')}
+            onClick={() => setActiveTier(activeTier === 'MEDIUM' ? 'ALL' : 'MEDIUM')}
             className={`p-3 rounded border text-left font-mono transition-all ${
-              activeTier === 'NEUTRAL'
+              activeTier === 'MEDIUM'
                 ? 'bg-accent/10 border-accent/30 font-semibold'
                 : 'bg-canvas border-border'
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="font-bold text-accent text-xs">NEUTRAL</span>
-              <Badge variant="cyan" size="sm">6 - 20 GB</Badge>
+              <span className="font-bold text-accent text-xs">MEDIUM</span>
+              <Badge variant="cyan" size="sm">3B – 8B params</Badge>
             </div>
             <p className="text-[11px] text-muted font-sans mt-1">
-              Balanced mid-range hardware for 8B–14B models.
+              Balanced mid-range models for everyday hardware.
             </p>
           </button>
 
           <button
-            onClick={() =>
-              setActiveTier(activeTier === 'I PAID FOR MY WHOLE PC' ? 'ALL' : 'I PAID FOR MY WHOLE PC')
-            }
+            onClick={() => setActiveTier(activeTier === 'HIGH' ? 'ALL' : 'HIGH')}
             className={`p-3 rounded border text-left font-mono transition-all ${
-              activeTier === 'I PAID FOR MY WHOLE PC'
+              activeTier === 'HIGH'
                 ? 'bg-accent/10 border-accent/30 font-semibold'
                 : 'bg-canvas border-border'
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="font-bold text-success text-xs">I PAID FOR MY WHOLE PC</span>
-              <Badge variant="emerald" size="sm">&gt; 20 GB</Badge>
+              <span className="font-bold text-success text-xs">HIGH</span>
+              <Badge variant="emerald" size="sm">&ge; 8B params</Badge>
             </div>
             <p className="text-[11px] text-muted font-sans mt-1">
-              High-end desktop/workstation for 32B–70B models.
+              Larger models for high-end desktops &amp; workstations.
             </p>
           </button>
         </div>

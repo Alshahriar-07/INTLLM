@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.routes import (
+    agent,
     api_keys,
     background,
     brain,
@@ -22,6 +23,7 @@ from app.api.routes import (
 
 api_router = APIRouter()
 api_router.include_router(health.router)
+api_router.include_router(agent.router)
 api_router.include_router(system.router)
 api_router.include_router(models.router)
 api_router.include_router(ollama.router)

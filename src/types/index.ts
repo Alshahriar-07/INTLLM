@@ -11,6 +11,36 @@ export type NavigationTab =
   | 'docs'
   | 'settings';
 
+export type ChatMode = 'chat' | 'agent';
+
+export interface AgentWorkspace {
+  configured: boolean;
+  path: string | null;
+  exists: boolean;
+  writable: boolean;
+  fileCount: number | null;
+  sessionGrants: string[];
+  terminalEnabled: boolean;
+}
+
+export interface AgentFsEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+  size: number | null;
+}
+
+export interface AgentOperation {
+  operation: string;
+  status: 'completed' | 'permission_required' | 'denied' | 'failed';
+  output?: Record<string, unknown> | null;
+  error?: string | null;
+  target?: string | null;
+  risk: string;
+  durationMs: number;
+  permission: string;
+}
+
 export type ActivityStepType = 
   | 'thinking'
   | 'flash_brain'
@@ -54,7 +84,9 @@ export interface Message {
   isStreaming?: boolean;
 }
 
-export type HardwareTier = 'POTATO' | 'NEUTRAL' | 'I PAID FOR MY WHOLE PC';
+// Model classification (v1.0.2) is by parameter count:
+//   < 3B -> POTATO · 3B to < 8B -> MEDIUM · >= 8B -> HIGH
+export type HardwareTier = 'POTATO' | 'MEDIUM' | 'HIGH';
 
 export interface Model {
   id: string;

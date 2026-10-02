@@ -86,7 +86,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name="INTLLM-windows-x64",
+    name="INTLLM",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -99,5 +99,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    # Application icon and Windows version metadata (generated from __version__).
+    icon="../assets/ico/INTLLM.ico",
+    version="../build/INTLLM-version-info.txt",
 )

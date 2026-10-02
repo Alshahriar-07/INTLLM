@@ -81,6 +81,9 @@ class ChatRequestBody(BaseModel):
     conversation_id: uuid.UUID | None = None
     use_brain: bool = True
     use_web: bool = False
+    # "agent" activates the workspace-aware coding assistant behaviour.
+    mode: Literal["chat", "agent"] = "chat"
+    workspace: str | None = None
     options: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -362,6 +365,72 @@ class OllamaActionResponse(BaseModel):
     startedVia: str | None = None
     message: str | None = None
     error: str | None = None
+
+
+# --- Agent mode / workspace ------------------------------------------------
+class AgentWorkspaceRequest(BaseModel):
+    path: str
+
+
+class AgentWorkspaceOut(BaseModel):
+    configured: bool
+    path: str | None = None
+    exists: bool = False
+    writable: bool = False
+    fileCount: int | None = None
+    sessionGrants: list[str] = Field(default_factory=list)
+    terminalEnabled: bool = True
+
+
+class AgentFsEntryOut(BaseModel):
+    name: str
+    path: str
+    isDir: bool
+    size: int | None = None
+
+
+class AgentOperationOut(BaseModel):
+    operation: str
+    status: str
+    output: dict[str, Any] | None = None
+    error: str | None = None
+    target: str | None = None
+    risk: str = "Low"
+    durationMs: float = 0.0
+    permission: str = "read-only"
+
+
+class AgentWriteRequest(BaseModel):
+    path: str
+    content: str = ""
+    decision: Literal["allow", "allow_session", "deny"] | None = None
+
+
+class AgentCreateDirRequest(BaseModel):
+    path: str
+    decision: Literal["allow", "allow_session", "deny"] | None = None
+
+
+class AgentDeleteRequest(BaseModel):
+    path: str
+    decision: Literal["allow", "allow_session", "deny"] | None = None
+
+
+class AgentMoveRequest(BaseModel):
+    source: str
+    destination: str
+    decision: Literal["allow", "allow_session", "deny"] | None = None
+
+
+class AgentTerminalRequest(BaseModel):
+    command: str
+    cwd: str | None = None
+    decision: Literal["allow", "allow_session", "deny"] | None = None
+
+
+class AgentPermissionRequest(BaseModel):
+    operation: str
+    decision: Literal["allow_session", "revoke"]
 
 
 # --- Diagnostics -----------------------------------------------------------

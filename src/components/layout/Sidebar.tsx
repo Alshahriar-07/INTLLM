@@ -157,17 +157,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
               })}
               <span className="ml-auto flex items-center gap-1">
                 <ShieldCheck className="w-3 h-3 text-success" aria-hidden />
-                v{version ?? '0.4.2'}
+                v{version ?? '1.0.2'}
               </span>
             </div>
           </div>
         ) : (
           <div
             className="flex flex-col items-center gap-1.5 pt-2"
-            title={`INTLLM v${version ?? '0.4.2'} — ${connected ? 'Connected' : 'Offline'}`}
+            title={`INTLLM v${version ?? '1.0.2'} — ${connected ? 'Connected' : 'Offline'}`}
           >
             <span className={cn('w-2 h-2 rounded-full', connected ? 'bg-success' : 'bg-warning')} aria-hidden />
-            <span className="text-[9px] font-mono text-muted">v{(version ?? '0.4.2').split('.').slice(0, 2).join('.')}</span>
+            <span className="text-[9px] font-mono text-muted">v{(version ?? '1.0.2').split('.').slice(0, 2).join('.')}</span>
           </div>
         )}
       </div>

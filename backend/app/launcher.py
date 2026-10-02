@@ -243,9 +243,9 @@ def _serve_frontend_once_ready(base_url: str) -> None:
 HELP_TEXT = """INTLLM - local-first AI runtime with an OpenAI-compatible API.
 
 Usage:
-  INTLLM-windows-x64.exe                 start the runtime and open the web UI
-  INTLLM-windows-x64.exe --version       print the version and exit
-  INTLLM-windows-x64.exe --help          print this help and exit
+  INTLLM.exe                 start the runtime and open the web UI
+  INTLLM.exe --version       print the version and exit
+  INTLLM.exe --help          print this help and exit
 
 Configuration is via INTLLM_* environment variables (see README).
 PostgreSQL and Ollama are external local dependencies that INTLLM detects

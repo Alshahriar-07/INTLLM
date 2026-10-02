@@ -22,6 +22,8 @@ def _to_request(body: ChatRequestBody) -> ChatRequest:
         conversation_id=body.conversation_id,
         use_brain=body.use_brain,
         use_web=body.use_web,
+        mode=body.mode,
+        workspace=body.workspace,
         options=body.options,
     )
 

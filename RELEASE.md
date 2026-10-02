@@ -1,5 +1,44 @@
 # INTLLM Release Notes
 
+## Version 1.0.2
+
+- **Version:** 1.0.2 (single source of truth: `backend/app/__init__.py`)
+- **Release date:** 2026-10-02
+- **Release status:** Production release
+
+### Highlights
+
+- **Agent Mode** with a Chat/Agent control and a **workspace** selector; the
+  backend Agent runtime is workspace-sandboxed and permission-gated (filesystem
+  read/search/create/write/delete/move + terminal execution).
+- **Model classification** is parameter-based: `< 3B` Potato, `3B to < 8B`
+  Medium, `>= 8B` High — consistent across backend, API, recommendations and UI.
+- **PostgreSQL** startup initializes the schema (Alembic or metadata DDL) and
+  reports `connected` / `degraded` / `unavailable` / `offline`.
+- **PyPI publishing** workflow using Trusted Publishing (OIDC) with build,
+  tests, `twine check`, distribution-content validation and install verification.
+- **Installers** rewritten for a polished, real-operation experience; `intllm`
+  command shim and desktop/Start Menu shortcuts on Windows.
+- **License changed** to the PolyForm Noncommercial License 1.0.0.
+
+### Artifacts
+
+Staged in `build/release/`:
+
+```text
+build/release/
+├── INTLLM.exe
+├── INTLLM-Setup.exe
+├── intllm-1.0.2-py3-none-any.whl
+├── intllm-1.0.2.tar.gz
+├── install.ps1
+├── install.sh
+└── SHA256.txt
+```
+
+> Artifacts in the 0.4.2 section below describe the previous build and are kept
+> for historical reference.
+
 ## Version 0.4.2
 
 - **Version:** 0.4.2 (single source of truth: `backend/app/__init__.py`)

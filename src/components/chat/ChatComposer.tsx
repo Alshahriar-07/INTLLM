@@ -1,11 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowUp, Brain, Globe, Loader2, Square } from 'lucide-react';
+import { ArrowUp, Brain, Globe, Loader2, Square, FolderOpen, X, MessageSquare, Terminal } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { AgentWorkspace, ChatMode } from '../../types';
 import { Button } from '../ui/Button';
 
 export interface ChatComposerProps {
   isConnected?: boolean;
   isStreaming?: boolean;
+  mode?: ChatMode;
+  onModeChange?: (mode: ChatMode) => void;
+  workspace?: AgentWorkspace | null;
+  onSelectWorkspace?: () => void;
+  onClearWorkspace?: () => void;
+  workspaceBusy?: boolean;
   onSend: (text: string, options: { useWeb: boolean; useBrain: boolean }) => void;
   onStop: () => void;
 }
@@ -16,6 +23,12 @@ const MAX_HEIGHT_PX = 180;
 export const ChatComposer: React.FC<ChatComposerProps> = ({
   isConnected = false,
   isStreaming = false,
+  mode = 'chat',
+  onModeChange,
+  workspace = null,
+  onSelectWorkspace,
+  onClearWorkspace,
+  workspaceBusy = false,
   onSend,
   onStop
 }) => {
@@ -37,7 +50,6 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
     if (!text || !isConnected || isStreaming) return;
     onSend(text, { useWeb, useBrain });
     setInput('');
-    // Return focus to the composer after sending.
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, [input, isConnected, isStreaming, onSend, useBrain, useWeb]);
 
@@ -52,7 +64,127 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
 
   return (
     <div className="shrink-0 bg-canvas border-t border-border">
-      <div className="max-w-3xl mx-auto w-full px-4 md:px-6 py-3">
+      <div className="max-w-3xl mx-auto w-full px-4 md:px-6 py-3 space-y-2">
+        {/* Mode control */}
+        <div className="flex items-center justify-between gap-2">
+          <div
+            role="tablist"
+            aria-label="Chat mode"
+            className="inline-flex items-center rounded-md border border-border bg-surface p-0.5"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'chat'}
+              onClick={() => onModeChange?.('chat')}
+              className={cn(
+                'flex items-center gap-1.5 h-6 px-2.5 rounded text-xs font-mono transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                mode === 'chat' ? 'bg-panel-hover text-primary' : 'text-muted hover:text-primary'
+              )}
+            >
+              <MessageSquare className="w-3.5 h-3.5" aria-hidden />
+              Chat
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'agent'}
+              onClick={() => onModeChange?.('agent')}
+              className={cn(
+                'flex items-center gap-1.5 h-6 px-2.5 rounded text-xs font-mono transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                mode === 'agent' ? 'bg-accent/15 text-accent' : 'text-muted hover:text-primary'
+              )}
+            >
+              <Terminal className="w-3.5 h-3.5" aria-hidden />
+              Agent
+            </button>
+          </div>
+
+          {mode === 'agent' && (
+            <span className="text-[10px] font-mono text-muted hidden sm:inline">
+              Coding mode · workspace-scoped, approval-gated
+            </span>
+          )}
+        </div>
+
+        {/* Agent workspace control */}
+        {mode === 'agent' && (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5">
+            <span className="text-[11px] font-mono text-muted flex items-center gap-1.5">
+              <FolderOpen className="w-3.5 h-3.5" aria-hidden />
+              Workspace
+            </span>
+            {workspace?.configured && workspace.path ? (
+              <>
+                <code
+                  className="flex-1 min-w-0 truncate text-[11px] font-mono text-primary"
+                  title={workspace.path}
+                >
+                  {workspace.path}
+                </code>
+                <span
+                  className={cn(
+                    'text-[10px] font-mono px-1.5 py-0.5 rounded border',
+                    workspace.exists && workspace.writable
+                      ? 'text-success bg-success/10 border-success/25'
+                      : workspace.exists
+                        ? 'text-warning bg-warning/10 border-warning/25'
+                        : 'text-error bg-error/10 border-error/25'
+                  )}
+                  title={
+                    workspace.exists
+                      ? workspace.writable
+                        ? 'Workspace ready'
+                        : 'Workspace is not writable'
+                      : 'Workspace folder no longer exists'
+                  }
+                >
+                  {workspace.exists ? (workspace.writable ? 'ready' : 'read-only') : 'missing'}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onSelectWorkspace}
+                  disabled={workspaceBusy}
+                >
+                  {workspaceBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                  Change
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onClearWorkspace}
+                  disabled={workspaceBusy}
+                  aria-label="Clear Agent workspace"
+                >
+                  <X className="w-3 h-3" />
+                  Clear
+                </Button>
+              </>
+            ) : (
+              <>
+                <span className="flex-1 text-[11px] font-mono text-muted">
+                  No folder selected — the Agent cannot touch files until a workspace is set.
+                </span>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={onSelectWorkspace}
+                  disabled={workspaceBusy}
+                >
+                  {workspaceBusy ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <FolderOpen className="w-3 h-3" />
+                  )}
+                  Select Folder
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Input */}
         <div
           className={cn(
             'bg-surface border border-border rounded-lg transition-colors focus-within:border-accent/50 focus-within:ring-2 focus-within:ring-ring/30',
@@ -69,9 +201,11 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder={
-              isConnected
-                ? 'Message INTLLM…  (Enter to send, Shift+Enter for a new line)'
-                : 'Runtime offline — start the INTLLM backend to send messages'
+              !isConnected
+                ? 'Runtime offline — start the INTLLM backend to send messages'
+                : mode === 'agent'
+                  ? 'Describe a coding task for the Agent…'
+                  : 'Message INTLLM…  (Enter to send, Shift+Enter for a new line)'
             }
             rows={1}
             style={{ height: MIN_HEIGHT_PX }}
@@ -134,7 +268,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
                   {isConnected ? (
                     <ArrowUp className="w-3.5 h-3.5" aria-hidden />
                   ) : (
-                    <Loader2 className="w-3.5 h-3.5" aria-hidden />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
                   )}
                   Send
                 </Button>

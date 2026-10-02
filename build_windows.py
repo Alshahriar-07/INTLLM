@@ -19,7 +19,6 @@ honestly.
 from __future__ import annotations
 
 import os
-import shutil
 import struct
 import subprocess
 import sys
@@ -35,7 +34,7 @@ BUILD_DIR = ROOT / "build"
 # Release output lives in build/release so the exe never collides with the
 # frontend dist/ folder that Vite empties on every build.
 RELEASE_DIR = ROOT / "build" / "release"
-OUT_EXE = RELEASE_DIR / "INTLLM-windows-x64.exe"
+OUT_EXE = RELEASE_DIR / "INTLLM.exe"
 
 STEP_PREFIX = "\n=== "
 
@@ -80,11 +79,24 @@ def step_package() -> None:
         import PyInstaller  # noqa: F401
     except ImportError:
         run([sys.executable, "-m", "pip", "install", "pyinstaller>=6.0"], BACKEND)
-    # Clean previous exe so the release dir holds exactly one INTLLM.exe.
-    if RELEASE_DIR.exists():
-        shutil.rmtree(RELEASE_DIR, ignore_errors=True)
+    # Remove only a previous exe (never the whole release dir: it may already
+    # hold the wheel/sdist built by scripts/build_release.py).
     RELEASE_DIR.mkdir(parents=True, exist_ok=True)
+    if OUT_EXE.exists():
+        try:
+            OUT_EXE.unlink()
+        except PermissionError:
+            raise SystemExit(
+                f"{OUT_EXE} is locked (another INTLLM.exe is still running). "
+                "Close it and retry."
+            )
     BUILD_DIR.mkdir(exist_ok=True)
+    # Windows version metadata for the exe, generated from __version__.
+    run(
+        [sys.executable, str(ROOT / "scripts" / "make_version_info.py"),
+         str(BUILD_DIR / "INTLLM-version-info.txt")],
+        ROOT,
+    )
     run(
         [
             sys.executable, "-m", "PyInstaller",
@@ -176,7 +188,17 @@ def step_smoke_test() -> None:
                     raise SystemExit("SPA fallback did not serve index.html for /chat")
             print("  /api/health OK, SPA fallback OK")
         finally:
-            proc.terminate()
+            # Kill the whole process tree: a onefile PyInstaller app spawns a
+            # child, and terminating only the bootloader would leave the child
+            # running (and the exe locked) after the build.
+            if sys.platform == "win32":
+                subprocess.run(
+                    ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                    capture_output=True,
+                    check=False,
+                )
+            else:
+                proc.terminate()
             try:
                 proc.wait(timeout=15)
             except subprocess.TimeoutExpired:

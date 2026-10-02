@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Loader2, RefreshCw } from 'lucide-react';
-import { ActivityStep, Message, WebSource } from '../../types';
+import { ActivityStep, AgentWorkspace, ChatMode, Message, WebSource } from '../../types';
 import { ChatMessages } from './ChatMessages';
 import { ChatComposer } from './ChatComposer';
 import { ConversationList } from './ConversationList';
 import { ModelSelector } from '../ui/ModelSelector';
 import { Button } from '../ui/Button';
+import { Modal } from '../ui/Modal';
+import { Input } from '../ui/Input';
 import { chatService, ConversationSummary } from '../../lib/services/chatService';
+import { agentService } from '../../lib/services/agentService';
 import { useIntllm } from '../../hooks/use-intllm';
 import { cn } from '../../lib/utils';
 
@@ -78,6 +81,14 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
   const [query, setQuery] = useState('');
   const [listOpen, setListOpen] = useState(true);
 
+  // --- Agent mode / workspace --------------------------------------------
+  const [mode, setMode] = useState<ChatMode>('chat');
+  const [workspace, setWorkspace] = useState<AgentWorkspace | null>(null);
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  const [showWorkspaceModal, setShowWorkspaceModal] = useState(false);
+  const [workspaceInput, setWorkspaceInput] = useState('');
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<(() => void) | null>(null);
@@ -99,6 +110,53 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
       setConversationsLoading(false);
     }
   }, [intllm.connected, intllm.loading, refreshConversations]);
+
+  // Load the Agent workspace state from the backend (never frontend-only).
+  useEffect(() => {
+    if (intllm.connected) {
+      agentService.getStatus().then(setWorkspace);
+    }
+  }, [intllm.connected]);
+
+  const openWorkspaceSelector = useCallback(async () => {
+    setWorkspaceError(null);
+    setWorkspaceBusy(true);
+    try {
+      const picked = await agentService.pickWorkspace();
+      if (picked?.configured) {
+        setWorkspace(picked);
+        return;
+      }
+    } finally {
+      setWorkspaceBusy(false);
+    }
+    setWorkspaceInput(workspace?.path ?? '');
+    setShowWorkspaceModal(true);
+  }, [workspace?.path]);
+
+  const applyWorkspacePath = useCallback(async () => {
+    const path = workspaceInput.trim();
+    if (!path) return;
+    setWorkspaceBusy(true);
+    setWorkspaceError(null);
+    const updated = await agentService.setWorkspace(path);
+    setWorkspaceBusy(false);
+    if (updated?.configured) {
+      setWorkspace(updated);
+      setShowWorkspaceModal(false);
+    } else {
+      setWorkspaceError(
+        'Could not use that folder. Check the path exists and the backend can read it.'
+      );
+    }
+  }, [workspaceInput]);
+
+  const clearWorkspace = useCallback(async () => {
+    setWorkspaceBusy(true);
+    const updated = await agentService.clearWorkspace();
+    setWorkspace(updated);
+    setWorkspaceBusy(false);
+  }, []);
 
   const openConversation = useCallback(async (id: string) => {
     abortRef.current?.();
@@ -187,7 +245,9 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
           model: currentModelId || undefined,
           conversation_id: activeId,
           use_brain: options.useBrain,
-          use_web: options.useWeb
+          use_web: options.useWeb,
+          mode,
+          workspace: mode === 'agent' ? workspace?.path ?? null : null
         },
         {
           onDelta: (content) => updateAssistant((m) => ({ ...m, content: m.content + content })),
@@ -233,7 +293,7 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
         }
       );
     },
-    [activeId, currentModelId, isConnected, messages, refreshConversations, updateAssistant]
+    [activeId, currentModelId, isConnected, messages, mode, refreshConversations, updateAssistant, workspace?.path]
   );
 
   const handleStop = useCallback(() => {
@@ -359,8 +419,53 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
         )}
 
         {/* Composer */}
-        <ChatComposer isConnected={isConnected} isStreaming={isStreaming} onSend={handleSend} onStop={handleStop} />
+        <ChatComposer
+          isConnected={isConnected}
+          isStreaming={isStreaming}
+          mode={mode}
+          onModeChange={setMode}
+          workspace={workspace}
+          onSelectWorkspace={openWorkspaceSelector}
+          onClearWorkspace={clearWorkspace}
+          workspaceBusy={workspaceBusy}
+          onSend={handleSend}
+          onStop={handleStop}
+        />
       </div>
+
+      {/* Workspace selection fallback (when the native folder chooser is unavailable) */}
+      <Modal
+        isOpen={showWorkspaceModal}
+        onClose={() => setShowWorkspaceModal(false)}
+        title="Select Agent Workspace"
+        description="Enter the absolute path of the folder the Agent may work in."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setShowWorkspaceModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={applyWorkspacePath} disabled={!workspaceInput.trim()}>
+              Use Folder
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          <Input
+            value={workspaceInput}
+            onChange={(e) => setWorkspaceInput(e.target.value)}
+            placeholder="e.g. C:\\Projects\\my-app"
+            className="font-mono text-sm"
+          />
+          {workspaceError && (
+            <p className="text-[11px] font-mono text-error">{workspaceError}</p>
+          )}
+          <p className="text-[11px] text-muted font-sans">
+            The Agent is sandboxed to this folder. It cannot read or modify paths outside it,
+            and destructive operations require your approval.
+          </p>
+        </div>
+      </Modal>
     </div>
   );
 };

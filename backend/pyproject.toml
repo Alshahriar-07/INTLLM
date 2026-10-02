@@ -5,7 +5,32 @@ dynamic = ["version"]
 description = "INTLLM local AI runtime backend (FastAPI orchestration over Ollama, PostgreSQL and INTLLM tools)."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "PolyForm-Noncommercial-1.0.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Al Shahriar Sowan" }]
+keywords = [
+    "intllm",
+    "local-ai",
+    "ollama",
+    "openai-compatible",
+    "fastapi",
+    "pgvector",
+    "llm",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+]
+
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
@@ -19,6 +44,12 @@ dependencies = [
     "httpx>=0.27.0",
     "psutil>=6.1.0",
 ]
+
+[project.urls]
+Homepage = "https://intllm.vercel.app"
+Repository = "https://github.com/Alshahriar-07/INTLLM"
+Issues = "https://github.com/Alshahriar-07/INTLLM/issues"
+Changelog = "https://github.com/Alshahriar-07/INTLLM/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 browser = ["playwright>=1.48.0"]
@@ -37,7 +68,7 @@ intllm = "app.cli:main"
 intllm-api = "app.main:run"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.dynamic]

@@ -122,7 +122,7 @@ class WebService:
             async with httpx.AsyncClient(
                 timeout=self._timeout(),
                 follow_redirects=True,
-                headers={"User-Agent": "INTLLM/0.4.2 (+local retrieval)"},
+                headers={"User-Agent": "INTLLM/1.0.2 (+local retrieval)"},
             ) as client:
                 response = await client.post(url, data={"q": query})
                 response.raise_for_status()
@@ -196,7 +196,7 @@ class WebService:
             async with httpx.AsyncClient(
                 timeout=self._timeout(),
                 follow_redirects=True,
-                headers={"User-Agent": "INTLLM/0.4.2 (+local retrieval)"},
+                headers={"User-Agent": "INTLLM/1.0.2 (+local retrieval)"},
             ) as client:
                 response = await client.get(url)
                 response.raise_for_status()

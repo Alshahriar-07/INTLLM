@@ -20,19 +20,51 @@ from app.services.runtime.ollama import OllamaAdapter, get_ollama_adapter
 
 logger = get_logger(__name__)
 
+# v1.0.2 classification is parameter-count based:
+#   < 3B        -> Potato
+#   3B to < 8B  -> Medium
+#   >= 8B       -> High
 TIER_POTATO = "POTATO"
-TIER_NEUTRAL = "NEUTRAL"
-TIER_WHOLE_PC = "I PAID FOR MY WHOLE PC"
+TIER_MEDIUM = "MEDIUM"
+TIER_HIGH = "HIGH"
 
 
-def tier_for_memory(memory_req_gb: float | None) -> str:
-    if memory_req_gb is None:
-        return TIER_NEUTRAL
-    if memory_req_gb < 6:
+def parse_parameter_billions(parameter_size: str | None) -> float | None:
+    """Parse an Ollama parameter-size string into billions of parameters.
+
+    Handles ``"7.6B"``, ``"3B"``, ``"1.5B"``, ``"70b"``. For mixture-of-experts
+    strings such as ``"8x7B"`` the total active-size magnitude is used
+    (``8 * 7 = 56B``), which matches how Ollama reports download size.
+    """
+    if not parameter_size:
+        return None
+    raw = parameter_size.strip().lower().replace("b", "").replace("parameters", "").strip()
+    if not raw:
+        return None
+    if "x" in raw:
+        total = 1.0
+        for part in raw.split("x"):
+            try:
+                total *= float(part)
+            except ValueError:
+                return None
+        return total or None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
+def tier_for_parameters(parameter_size: str | None) -> str:
+    """Classify a model by parameter count (v1.0.2 rules)."""
+    billions = parse_parameter_billions(parameter_size)
+    if billions is None:
+        return TIER_MEDIUM
+    if billions < 3:
         return TIER_POTATO
-    if memory_req_gb <= 20:
-        return TIER_NEUTRAL
-    return TIER_WHOLE_PC
+    if billions < 8:
+        return TIER_MEDIUM
+    return TIER_HIGH
 
 
 class ModelService:
@@ -59,7 +91,7 @@ class ModelService:
                 "quantization": info.quantization,
                 "size_bytes": info.size_bytes,
                 "memory_req_gb": memory_req,
-                "tier": tier_for_memory(memory_req),
+                "tier": tier_for_parameters(info.parameter_size),
                 "installed": True,
             }
             if record is None and not info.capabilities:
@@ -130,7 +162,7 @@ class ModelService:
             recommendations.append(
                 {
                     "name": record.name,
-                    "tier": record.tier or tier_for_memory(required),
+                    "tier": record.tier or tier_for_parameters(record.parameter_size),
                     "memory_req_gb": required,
                     "fits": fits,
                     "utilization_percent": utilization,

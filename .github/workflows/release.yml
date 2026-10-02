@@ -136,6 +136,10 @@ jobs:
         with:
           path: build/release
           merge-multiple: true
+      - name: Stage the canonical installers as release assets
+        run: |
+          cp IRM_INSTALL/install.ps1 build/release/install.ps1
+          cp IRM_INSTALL/install.sh build/release/install.sh
       - name: Regenerate SHA256.txt from the final artifact set
         run: python scripts/make_sha256.py build/release
       - name: Validate artifacts + checksums + install
