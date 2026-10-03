@@ -72,10 +72,16 @@ def check_names(release_dir: Path, require_exe: bool) -> None:
     print(f"  sdist:  {sdists[0].name}")
 
     if require_exe:
-        for name in ("INTLLM.exe", "INTLLM-Setup.exe"):
-            if not (release_dir / name).is_file():
-                fail(f"required Windows artifact is missing: {name}")
-            print(f"  exe:    {name}")
+        portable = sorted(release_dir.glob("INTLLM-v*-win64x.exe"))
+        setups = sorted(release_dir.glob("INTLLM-v*-Setup.exe"))
+        if len(portable) != 1:
+            fail(f"expected exactly one portable exe, found {[p.name for p in portable]}")
+        if len(setups) != 1:
+            fail(f"expected exactly one setup installer, found {[s.name for s in setups]}")
+        for path in (*portable, *setups):
+            if path.stat().st_size == 0:
+                fail(f"Windows artifact is empty: {path.name}")
+            print(f"  exe:    {path.name}")
 
     return wheels[0]
 

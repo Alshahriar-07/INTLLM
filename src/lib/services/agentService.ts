@@ -1,4 +1,4 @@
-import { AgentOperation, AgentWorkspace } from '../../types';
+import { AgentOperation, AgentPermissionMode, AgentWorkspace } from '../../types';
 import { apiRequest } from '../api/client';
 
 /** Agent mode API service. All filesystem/terminal work runs on the backend. */
@@ -113,5 +113,32 @@ export const agentService = {
       body: JSON.stringify({ operation, decision: 'allow_session' })
     });
     return result.data?.session_grants ?? [];
+  },
+
+  /** Read the persisted Allow / Ask Me permission mode. */
+  async getPermissionMode(): Promise<AgentPermissionMode | null> {
+    const result = await apiRequest<{ mode: AgentPermissionMode }>('/agent/permissions/mode');
+    return result.ok ? result.data?.mode ?? null : null;
+  },
+
+  /** Switch between Allow and Ask Me (persisted locally by the backend). */
+  async setPermissionMode(mode: AgentPermissionMode): Promise<AgentPermissionMode | null> {
+    const result = await apiRequest<{ ok: boolean; mode: AgentPermissionMode }>(
+      '/agent/permissions/mode',
+      { method: 'POST', body: JSON.stringify({ mode }) }
+    );
+    return result.ok ? result.data?.mode ?? null : null;
+  },
+
+  /** Answer a pending Agent Allow/Deny request during a streaming run. */
+  async decidePermission(
+    requestId: string,
+    decision: 'allow' | 'deny'
+  ): Promise<boolean> {
+    const result = await apiRequest('/agent/permissions/decide', {
+      method: 'POST',
+      body: JSON.stringify({ request_id: requestId, decision })
+    });
+    return result.ok;
   }
 };

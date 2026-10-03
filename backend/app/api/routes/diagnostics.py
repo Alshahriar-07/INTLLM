@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,5 +18,5 @@ async def diagnostics(
     session: AsyncSession | None = Depends(get_session_optional),
 ) -> dict[str, object]:
     snapshot = await get_diagnostics_service().snapshot(session)
-    snapshot["capturedAt"] = datetime.now(timezone.utc).isoformat()
+    snapshot["capturedAt"] = datetime.now(UTC).isoformat()
     return snapshot

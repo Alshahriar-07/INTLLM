@@ -45,7 +45,7 @@ class OllamaAdapter:
                 response = await client.get("/api/tags")
                 response.raise_for_status()
                 payload = response.json()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise RuntimeUnavailable(f"Ollama model listing failed: {exc}") from exc
 
         models: list[ModelInfo] = []
@@ -69,7 +69,7 @@ class OllamaAdapter:
                 response = await client.post("/api/show", json={"name": name})
                 response.raise_for_status()
                 return response.json()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise RuntimeUnavailable(f"Ollama show failed for {name}: {exc}") from exc
 
     async def chat(
@@ -90,42 +90,41 @@ class OllamaAdapter:
         try:
             async with httpx.AsyncClient(
                 base_url=self._base_url, timeout=self._settings.intllm_ollama_timeout_seconds
-            ) as client:
-                async with client.stream("POST", "/api/chat", json=body) as response:
-                    if response.status_code >= 400:
-                        detail = (await response.aread()).decode("utf-8", "replace")
+            ) as client, client.stream("POST", "/api/chat", json=body) as response:
+                if response.status_code >= 400:
+                    detail = (await response.aread()).decode("utf-8", "replace")
+                    yield StreamChunk(
+                        type="error",
+                        error=f"Ollama returned HTTP {response.status_code}: {detail[:400]}",
+                    )
+                    return
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        data = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if data.get("error"):
+                        yield StreamChunk(type="error", error=str(data["error"]))
+                        return
+                    message = data.get("message") or {}
+                    content = message.get("content", "")
+                    if content:
+                        yield StreamChunk(type="delta", content=content, model=model)
+                    if data.get("done"):
                         yield StreamChunk(
-                            type="error",
-                            error=f"Ollama returned HTTP {response.status_code}: {detail[:400]}",
+                            type="done",
+                            model=model,
+                            done_reason=data.get("done_reason"),
+                            metrics={
+                                "prompt_eval_count": data.get("prompt_eval_count"),
+                                "eval_count": data.get("eval_count"),
+                                "eval_duration_ns": data.get("eval_duration"),
+                                "total_duration_ns": data.get("total_duration"),
+                            },
                         )
                         return
-                    async for line in response.aiter_lines():
-                        if not line.strip():
-                            continue
-                        try:
-                            data = json.loads(line)
-                        except json.JSONDecodeError:
-                            continue
-                        if data.get("error"):
-                            yield StreamChunk(type="error", error=str(data["error"]))
-                            return
-                        message = data.get("message") or {}
-                        content = message.get("content", "")
-                        if content:
-                            yield StreamChunk(type="delta", content=content, model=model)
-                        if data.get("done"):
-                            yield StreamChunk(
-                                type="done",
-                                model=model,
-                                done_reason=data.get("done_reason"),
-                                metrics={
-                                    "prompt_eval_count": data.get("prompt_eval_count"),
-                                    "eval_count": data.get("eval_count"),
-                                    "eval_duration_ns": data.get("eval_duration"),
-                                    "total_duration_ns": data.get("total_duration"),
-                                },
-                            )
-                            return
         except httpx.TimeoutException as exc:
             yield StreamChunk(type="error", error=f"Ollama request timed out: {exc}")
         except Exception as exc:  # noqa: BLE001

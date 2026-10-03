@@ -11,11 +11,12 @@ import asyncio
 import platform
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.config.settings import get_settings
 from app.core.logging import get_logger
+from app.db.health import get_database_health
 from app.db.session import get_database
 from app.services.browser.service import get_browser_service
 from app.services.runtime.ollama import get_ollama_adapter
@@ -25,7 +26,7 @@ logger = get_logger(__name__)
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 async def _run_blocking(func, *args):
@@ -37,7 +38,7 @@ def _cpu_name() -> str:
     if processor:
         return processor
     try:
-        import psutil  # noqa: PLC0415
+        import psutil
 
         freq = psutil.cpu_freq()
         if freq and freq.max:
@@ -83,7 +84,7 @@ def _gpu_info() -> dict[str, Any] | None:
 
 class HardwareService:
     async def snapshot(self) -> dict[str, Any]:
-        import psutil  # noqa: PLC0415
+        import psutil
 
         cpu_percent = await _run_blocking(lambda: psutil.cpu_percent(interval=0.1))
         memory = psutil.virtual_memory()
@@ -145,6 +146,7 @@ class SystemService:
         db_available, db_error = await get_database().ping()
         ollama_available, ollama_error = await get_ollama_adapter().health()
         web_available, web_error = await self._web_health()
+        snapshot = get_database_health().snapshot()
 
         browser = get_browser_service()
         browser_available, browser_error = browser.availability()
@@ -154,6 +156,12 @@ class SystemService:
             "postgres": {
                 "status": "connected" if db_available else "offline",
                 "detail": db_error,
+                "state": snapshot.status,
+                "category": snapshot.category,
+            },
+            "memory": {
+                "status": snapshot.memory,
+                "detail": snapshot.detail,
             },
             "ollama": {
                 "status": "connected" if ollama_available else "offline",

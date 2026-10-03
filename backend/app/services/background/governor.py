@@ -57,20 +57,14 @@ class ResourceGovernor:
 
     def evaluate(self, *, cpu_percent: float | None = None, ram_percent: float | None = None) -> ResourceState:
         settings = self._settings
-        if self._active_interactive > 0:
-            state = ResourceState.BUSY
-        elif self.recent_latency_ms is not None and (
+        if self._active_interactive > 0 or self.recent_latency_ms is not None and (
             self.recent_latency_ms > settings.intllm_background_latency_threshold_ms
-        ):
-            state = ResourceState.BUSY
-        elif cpu_percent is not None and cpu_percent > settings.intllm_background_cpu_threshold_percent:
+        ) or cpu_percent is not None and cpu_percent > settings.intllm_background_cpu_threshold_percent:
             state = ResourceState.BUSY
         else:
             state = ResourceState.NORMAL
 
-        if ram_percent is not None and ram_percent > settings.intllm_background_ram_threshold_percent:
-            state = ResourceState.CRITICAL
-        elif cpu_percent is not None and cpu_percent > 95.0:
+        if ram_percent is not None and ram_percent > settings.intllm_background_ram_threshold_percent or cpu_percent is not None and cpu_percent > 95.0:
             state = ResourceState.CRITICAL
 
         if self._paused and state is ResourceState.NORMAL:

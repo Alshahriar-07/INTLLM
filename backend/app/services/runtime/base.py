@@ -10,13 +10,20 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
-from app.core.errors import ServiceUnavailableError
+from app.core.errors import NotFoundError, ServiceUnavailableError
 
 
 class RuntimeUnavailable(ServiceUnavailableError):
     """Raised when the model runtime (e.g. Ollama) cannot be reached."""
 
     def __init__(self, message: str = "Model runtime is unavailable") -> None:
+        super().__init__(message)
+
+
+class ModelNotFound(NotFoundError):
+    """Raised when the requested model is not installed in the local runtime."""
+
+    def __init__(self, message: str = "Model not found") -> None:
         super().__init__(message)
 
 

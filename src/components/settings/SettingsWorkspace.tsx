@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { useTheme, Theme } from '../../hooks/use-theme';
 import {
   API_BASE,
+  BACKEND_ORIGIN,
   CONNECTION_TIMEOUT_MS,
-  INTLLM_BASE_URL,
+  DISPLAY_API_BASE,
+  DISPLAY_OPENAI_BASE,
   OLLAMA_DEFAULT_URL,
-  OPENAI_BASE,
   POLLING_INTERVAL_MS
 } from '../../lib/api/client';
 import {
@@ -97,9 +98,9 @@ export const SettingsWorkspace: React.FC = () => {
   const [webVerification, setWebVerification] = useState(true);
 
   const runtimeRows: { label: string; value: string }[] = [
-    { label: 'Backend URL (VITE_INTLLM_BASE_URL)', value: INTLLM_BASE_URL ?? 'not configured' },
-    { label: 'API base', value: API_BASE ?? 'unavailable' },
-    { label: 'OpenAI-compatible base', value: OPENAI_BASE ?? 'unavailable' },
+    { label: 'Backend origin', value: BACKEND_ORIGIN || 'same origin (backend serves this UI)' },
+    { label: 'API base', value: DISPLAY_API_BASE },
+    { label: 'OpenAI-compatible base', value: DISPLAY_OPENAI_BASE },
     { label: 'Ollama URL (backend-managed)', value: OLLAMA_DEFAULT_URL },
     { label: 'Connection timeout', value: `${CONNECTION_TIMEOUT_MS} ms` },
     { label: 'Polling interval', value: `${POLLING_INTERVAL_MS} ms` }
@@ -364,7 +365,7 @@ export const SettingsWorkspace: React.FC = () => {
                   title="Endpoint"
                   description="Point any OpenAI-compatible client at this base URL."
                 >
-                  <code className="text-xs font-mono text-secondary">{OPENAI_BASE ?? 'unavailable'}</code>
+                  <code className="text-xs font-mono text-secondary">{DISPLAY_OPENAI_BASE}</code>
                 </SettingRow>
                 <SettingRow
                   title="Authentication"

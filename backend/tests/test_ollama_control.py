@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import httpx
 import pytest
+
 from app.main import app
 from app.services.ollama import process as ollama_process
 

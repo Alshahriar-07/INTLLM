@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowUp, Brain, Globe, Loader2, Square, FolderOpen, X, MessageSquare, Terminal } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { AgentWorkspace, ChatMode } from '../../types';
+import { AgentPermissionMode, AgentWorkspace, ChatMode } from '../../types';
 import { Button } from '../ui/Button';
 
 export interface ChatComposerProps {
@@ -13,6 +13,8 @@ export interface ChatComposerProps {
   onSelectWorkspace?: () => void;
   onClearWorkspace?: () => void;
   workspaceBusy?: boolean;
+  permissionMode?: AgentPermissionMode;
+  onPermissionModeChange?: (mode: AgentPermissionMode) => void;
   onSend: (text: string, options: { useWeb: boolean; useBrain: boolean }) => void;
   onStop: () => void;
 }
@@ -29,6 +31,8 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   onSelectWorkspace,
   onClearWorkspace,
   workspaceBusy = false,
+  permissionMode = 'ask',
+  onPermissionModeChange,
   onSend,
   onStop
 }) => {
@@ -181,6 +185,48 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
                 </Button>
               </>
             )}
+          </div>
+        )}
+
+        {/* Agent permission mode (Allow / Ask Me) */}
+        {mode === 'agent' && (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5">
+            <span className="text-[11px] font-mono text-muted">Permission</span>
+            <div
+              role="tablist"
+              aria-label="Agent permission mode"
+              className="inline-flex items-center rounded-md border border-border bg-canvas p-0.5"
+            >
+              {(['allow', 'ask'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={permissionMode === value}
+                  onClick={() => onPermissionModeChange?.(value)}
+                  className={cn(
+                    'h-6 px-2.5 rounded text-[11px] font-mono transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                    permissionMode === value
+                      ? value === 'allow'
+                        ? 'bg-warning/15 text-warning'
+                        : 'bg-accent/15 text-accent'
+                      : 'text-muted hover:text-primary'
+                  )}
+                  title={
+                    value === 'allow'
+                      ? 'Allow: the Agent performs workspace actions automatically'
+                      : 'Ask Me: the Agent asks before changing files or running commands'
+                  }
+                >
+                  {value === 'allow' ? 'Allow' : 'Ask Me'}
+                </button>
+              ))}
+            </div>
+            <span className="text-[10px] font-mono text-muted hidden sm:inline">
+              {permissionMode === 'allow'
+                ? 'Workspace actions run automatically'
+                : 'Approval required for file/terminal changes'}
+            </span>
           </div>
         )}
 

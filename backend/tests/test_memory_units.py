@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
+
 from app.core.errors import ValidationError
 from app.services.brain.service import (
     extract_keywords,
@@ -27,7 +28,7 @@ def test_extract_keywords_filters_stopwords_and_dupes():
 
 
 def test_freshness_decays_to_zero_after_ttl():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     fresh = freshness_score(
         verified_at=now, created_at=now, policy="medium", now=now
     )
@@ -39,7 +40,7 @@ def test_freshness_decays_to_zero_after_ttl():
 
 
 def test_freshness_halfway_through_ttl():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     score = freshness_score(
         verified_at=now - timedelta(days=15), created_at=now, policy="medium", now=now
     )

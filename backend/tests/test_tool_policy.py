@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from app.core.errors import NotFoundError, PermissionDeniedError
 from app.services.tools.gateway import (
     PermissionDecision,

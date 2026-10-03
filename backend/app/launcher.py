@@ -1,15 +1,17 @@
-"""INTLLM Windows application launcher.
+"""INTLLM shared startup helpers and headless launcher.
 
-Single-entry startup used by the packaged INTLLM.exe:
+This module owns the pieces every startup path shares:
 
-1. initialize configuration and local application directories
-2. initialize rotating file logging (never logs secrets)
-3. check the configured backend port (connect to an existing INTLLM instance
-   instead of starting a duplicate; never kill unrelated processes)
-4. start the real FastAPI backend (uvicorn, in-process)
-5. wait until /api/health responds
-6. open the production frontend in the default browser
-7. serve until the user closes the window (Ctrl+C or console close)
+* per-user application directories (``%LOCALAPPDATA%\\INTLLM`` on Windows)
+* rotating file logging with secret redaction
+* database bootstrap
+* port resolution that attaches to an existing INTLLM instance instead of
+  starting a duplicate (and never kills unrelated processes)
+* locating the bundled frontend build
+
+The user-facing production entry point is :mod:`app.desktop`, which hosts the
+INTLLM UI in a native window (no browser required). ``launcher.main`` delegates
+to it so the packaged ``INTLLM.exe`` opens the desktop application.
 
 Database and Ollama stay external, honestly reported dependencies:
 the launcher never fabricates availability.
@@ -20,16 +22,17 @@ from __future__ import annotations
 import os
 import socket
 import sys
-import threading
-import time
-import webbrowser
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from app.core.logging import get_logger
 
+if TYPE_CHECKING:
+    from app.services.system.db_init import DatabaseReport
+
 logger = get_logger(__name__)
 
-APP_NAME = "INTLLM"
+APP_NAME = "INTLLM"  # data root: %LOCALAPPDATA%\\INTLLM
 HEALTH_TIMEOUT_SECONDS = 45.0
 HEALTH_POLL_SECONDS = 0.4
 # /api/health probes PostgreSQL and Ollama; when Ollama is unreachable its
@@ -103,24 +106,56 @@ def _init_file_logging(settings, logs_dir: Path) -> None:
 # --- Database bootstrap ---------------------------------------------------------
 
 
-def _bootstrap_database() -> None:
-    """Initialize the local PostgreSQL schema before the server starts.
+def _bootstrap_database() -> DatabaseReport:
+    """Bring PostgreSQL up and initialize the local schema.
 
-    PostgreSQL and pgvector stay external, honestly reported dependencies: an
-    unavailable database does not crash the app, it is surfaced with the exact
-    remediation step. Schema creation is real DDL (Alembic, or SQLAlchemy
-    metadata when Alembic is not bundled into the frozen executable).
+    Real startup sequence:
+
+    1. ensure a local PostgreSQL is reachable — start the INTLLM-managed
+       runtime when present (initdb on first run, pg_ctl start, loopback
+       only) or a detected installed-but-stopped local service;
+    2. initialize the schema (Alembic, or SQLAlchemy metadata DDL in the
+       packaged executable) and verify every required table.
+
+    An unavailable database never crashes the app: it is returned as an
+    honest report with the exact remediation step.
     """
+    from app.config.settings import get_settings
     from app.services.system.db_init import initialize_database
+    from app.services.system.postgres_runtime import ensure_postgres_available
+
+    runtime = ensure_postgres_available(get_settings())
+    logger.info("postgres runtime", extra={"intllm_extra": runtime.as_dict()})
+    if runtime.running:
+        print(
+            f"[INTLLM] PostgreSQL: {runtime.detail or 'connected'}"
+            + (f" (127.0.0.1:{runtime.port})" if runtime.port else "")
+        )
 
     report = initialize_database()
+    # Merge the runtime outcome into the schema report so callers see one
+    # honest picture (schema init never overwrites a real runtime failure).
+    if report.status != "running" and runtime.mode == "unavailable":
+        report.detail = report.detail or runtime.detail
+        report.actions = [*report.actions, *runtime.actions]
     logger.info("database bootstrap", extra={"intllm_extra": report.as_dict()})
     if report.status != "running":
-        print(f"[INTLLM] Database: {report.status}")
+        category = f" ({report.category})" if report.category else ""
+        print(f"[INTLLM] Database: {report.status}{category}")
         if report.detail:
             print(f"[INTLLM]   {report.detail}")
         for action in report.actions:
             print(f"[INTLLM]   -> {action}")
+    return report
+
+
+def shutdown_managed_postgres() -> None:
+    """Stop the INTLLM-managed PostgreSQL cluster (desktop shutdown path)."""
+    from app.services.system.postgres_runtime import managed_data_dir, stop_managed
+
+    # Only stop the cluster this app instance owns; external servers and a
+    # cluster another INTLLM instance is using are left alone.
+    stop_managed(managed_data_dir())
 
 
 # --- Port utilities -------------------------------------------------------------
@@ -201,129 +236,22 @@ def _static_root() -> Path:
     )
 
 
-def _serve_frontend_once_ready(base_url: str) -> None:
-    """Wait for /api/health, then open the UI in the default browser.
-
-    Uses stdlib urllib (no event loop involved) so the waiter thread can never
-    interfere with uvicorn's asyncio loop on Windows.
-    """
-    import urllib.error
-    import urllib.request
-
-    deadline = time.monotonic() + HEALTH_TIMEOUT_SECONDS
-    last_error: str | None = None
-    while time.monotonic() < deadline:
-        try:
-            with urllib.request.urlopen(  # noqa: S310 - loopback, fixed URL scheme
-                f"{base_url}/api/health", timeout=HEALTH_REQUEST_TIMEOUT_SECONDS
-            ) as response:
-                if response.status in (200, 503):
-                    ui_url = f"{base_url}/app/"
-                    logger.info(
-                        "backend ready; opening UI",
-                        extra={"intllm_extra": {"ui_url": ui_url}},
-                    )
-                    webbrowser.open(ui_url)
-                    return
-                last_error = f"HTTP {response.status}"
-        except urllib.error.HTTPError as exc:  # still means the server is up
-            if exc.code in (200, 503):
-                webbrowser.open(f"{base_url}/app/")
-                return
-            last_error = f"HTTP {exc.code}"
-        except Exception as exc:  # noqa: BLE001 - backend not up yet
-            last_error = f"{type(exc).__name__}: {exc}"
-        time.sleep(HEALTH_POLL_SECONDS)
-    logger.error(
-        "backend did not become healthy in time; UI not opened automatically",
-        extra={"intllm_extra": {"base_url": base_url, "last_error": last_error}},
-    )
-
-
-HELP_TEXT = """INTLLM - local-first AI runtime with an OpenAI-compatible API.
-
-Usage:
-  INTLLM.exe                 start the runtime and open the web UI
-  INTLLM.exe --version       print the version and exit
-  INTLLM.exe --help          print this help and exit
-
-Configuration is via INTLLM_* environment variables (see README).
-PostgreSQL and Ollama are external local dependencies that INTLLM detects
-and reports honestly; neither is bundled or silently installed.
-"""
-
-
-def main() -> int:
-    argv = sys.argv[1:]
-    if "--version" in argv or "-V" in argv:
-        print(f"INTLLM {_version()}")
-        return 0
-    if "--help" in argv or "-h" in argv:
-        print(HELP_TEXT)
-        return 0
-
-    from app.config.settings import get_settings
-
-    settings = get_settings()
-    dirs = _ensure_dirs(settings)
-    _init_file_logging(settings, dirs["logs"])
-
-    logger.info(
-        "INTLLM starting",
-        extra={"intllm_extra": {"version": _version(), "data_dir": str(dirs["root"])}},
-    )
-
-    _bootstrap_database()
-
-    port, notice = _resolve_port_conflict(settings)
-    base_url = f"http://{settings.intllm_host}:{port}"
-    if notice:
-        logger.warning(notice)
-        print(f"[INTLLM] {notice}")
-
-    static_root = _static_root()
-    os.environ["INTLLM_SERVE_STATIC"] = "1"
-    os.environ["INTLLM_STATIC_ROOT"] = str(static_root)
-    os.environ["INTLLM_EFFECTIVE_PORT"] = str(port)
-
-    threading.Thread(target=_serve_frontend_once_ready, args=(base_url,), daemon=True).start()
-
-    import uvicorn
-
-    try:
-        uvicorn.run(
-            "app.main:app",
-            host=settings.intllm_host,
-            port=port,
-            log_level=settings.intllm_log_level.lower(),
-            # Pure-Python HTTP protocol: httptools' C extension does not
-            # survive PyInstaller onefile bundling reliably and can accept
-            # connections without ever answering them. h11 is dependable.
-            http="h11",
-            # SSE only; no WebSocket upgrade needed by the current frontend.
-            ws="websockets" if _ws_available() else None,
-            # The exe is a console app; Ctrl+C or closing the window shuts down.
-            lifespan="on",
-        )
-    except KeyboardInterrupt:
-        pass
-    logger.info("INTLLM stopped")
-    return 0
-
-
-def _ws_available() -> bool:
-    try:
-        import websockets  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
-
-
 def _version() -> str:
     from app import __version__
 
     return __version__
+
+
+def main() -> int:
+    """Packaged application entry point.
+
+    The production experience is the desktop application (native window
+    hosting the INTLLM UI). This delegates to :mod:`app.desktop` so that
+    ``INTLLM.exe`` opens the desktop window rather than a browser.
+    """
+    from app.desktop import main as desktop_main
+
+    return desktop_main()
 
 
 if __name__ == "__main__":

@@ -51,3 +51,13 @@ for (const [source, destination] of PAIRS) {
 }
 
 writeFileSync(resolve(root, 'public/.nojekyll'), '');
+
+// Vite copies public/* into dist/ at build time; mirror the installers there as
+// well so a stale dist/ (used directly by the packaged executable) still ships
+// the current installer scripts. dist/ is not the release staging directory.
+mkdirSync(resolve(root, 'dist'), { recursive: true });
+for (const [, destination] of PAIRS) {
+  const name = destination.split('/').pop();
+  copyFileSync(resolve(root, destination), resolve(root, 'dist', name));
+}
+console.log('[sync-installers] mirrored installers into dist/');

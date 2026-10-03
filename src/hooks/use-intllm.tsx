@@ -73,10 +73,15 @@ export const IntllmProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let modelsError: string | undefined;
 
       if (health.connected) {
-        const modelsResult = await modelService.getInstalledModels();
-        models = modelsResult.models;
-        modelsConnected = modelsResult.connected;
-        modelsError = modelsResult.error;
+        // A failing model fetch must never wedge the app on the boot screen.
+        try {
+          const modelsResult = await modelService.getInstalledModels();
+          models = modelsResult.models;
+          modelsConnected = modelsResult.connected;
+          modelsError = modelsResult.error;
+        } catch (modelError) {
+          modelsError = modelError instanceof Error ? modelError.message : 'Model list failed';
+        }
       }
 
       // Pick a default model only from real installed models.
@@ -97,6 +102,17 @@ export const IntllmProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         modelsConnected,
         modelsError,
         currentModelId,
+        loading: false
+      }));
+    } catch (error) {
+      // Never leave loading=true: a thrown refresh shows the real offline UI
+      // (offline banner + degraded screens) instead of an endless boot screen.
+      console.error('INTLLM health refresh failed:', error);
+      setState((prev) => ({
+        ...prev,
+        endpointConfigured: isEndpointConfigured(),
+        connected: false,
+        status: 'offline',
         loading: false
       }));
     } finally {

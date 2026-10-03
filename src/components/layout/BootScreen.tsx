@@ -8,21 +8,22 @@ export interface BootScreenProps {
 
 export const BootScreen: React.FC<BootScreenProps> = ({ onComplete }) => {
   const [showStatus, setShowStatus] = useState(false);
+  const [statusText, setStatusText] = useState('Initialising local AI runtime…');
 
   useEffect(() => {
     // Respect prefers-reduced-motion: skip the animation entirely.
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (prefersReducedMotion) {
+      setStatusText('Loading…');
       onComplete();
       return;
     }
 
-    const t1 = setTimeout(() => setShowStatus(true), 500);
-    const t2 = setTimeout(() => onComplete(), 1300);
+    const t1 = setTimeout(() => setShowStatus(true), 300);
+    // Do NOT auto-complete - wait for the app to be ready
 
     return () => {
       clearTimeout(t1);
-      clearTimeout(t2);
     };
   }, [onComplete]);
 
@@ -34,10 +35,13 @@ export const BootScreen: React.FC<BootScreenProps> = ({ onComplete }) => {
           {showStatus && (
             <div className="flex items-center gap-2 text-xs text-muted font-mono animate-fade-in">
               <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" aria-hidden />
-              <span>Initialising local AI runtime…</span>
+              <span>{statusText}</span>
             </div>
           )}
         </div>
+        <p className="text-xs text-muted">
+          Connecting to local services…
+        </p>
       </div>
     </div>
   );

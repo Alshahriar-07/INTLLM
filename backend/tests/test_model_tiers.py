@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from app.services.models.service import (
     TIER_HIGH,
     TIER_MEDIUM,

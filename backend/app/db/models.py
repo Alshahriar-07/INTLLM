@@ -12,6 +12,7 @@ from typing import Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     Float,
@@ -50,7 +51,9 @@ class ModelRecord(Base, TimestampMixin):
     context_length: Mapped[int | None] = mapped_column(Integer)
     memory_req_gb: Mapped[float | None] = mapped_column(Float)
     tier: Mapped[str | None] = mapped_column(String(64))
-    size_bytes: Mapped[int | None] = mapped_column(Integer)
+    # BigInteger: real model files routinely exceed the int32 range
+    # (2,147,483,647 bytes = 2 GiB); e.g. gemma3:4b is ~3.1 GB.
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
     capabilities: Mapped[list[str]] = mapped_column(JSONB, default=list)
     installed: Mapped[bool] = mapped_column(Boolean, default=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -65,7 +68,7 @@ class Conversation(Base, TimestampMixin):
     title: Mapped[str] = mapped_column(String(255), default="New conversation")
     model_name: Mapped[str | None] = mapped_column(String(255))
 
-    messages: Mapped[list["Message"]] = relationship(
+    messages: Mapped[list[Message]] = relationship(
         back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at"
     )
 
@@ -104,10 +107,10 @@ class MemoryItem(Base, UUIDPrimaryKey, TimestampMixin):
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
-    sources: Mapped[list["MemorySource"]] = relationship(
+    sources: Mapped[list[MemorySource]] = relationship(
         back_populates="memory", cascade="all, delete-orphan"
     )
-    flash: Mapped["FlashIndex | None"] = relationship(
+    flash: Mapped[FlashIndex | None] = relationship(
         back_populates="memory", cascade="all, delete-orphan", uselist=False
     )
 
@@ -214,7 +217,7 @@ class BackgroundJob(Base, UUIDPrimaryKey, TimestampMixin):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
 
-    events: Mapped[list["JobEvent"]] = relationship(
+    events: Mapped[list[JobEvent]] = relationship(
         back_populates="job", cascade="all, delete-orphan"
     )
 
@@ -261,20 +264,20 @@ class Diagnostic(Base, UUIDPrimaryKey):
 
 
 __all__ = [
+    "EMBEDDING_DIM",
+    "ApiKey",
     "AppSetting",
-    "ModelRecord",
+    "AuditEvent",
+    "BackgroundJob",
+    "BrowserSession",
     "Conversation",
-    "Message",
-    "MemoryItem",
-    "MemorySource",
+    "Diagnostic",
     "FlashIndex",
     "HotCacheMetadata",
-    "ToolRun",
-    "BrowserSession",
-    "ApiKey",
-    "BackgroundJob",
     "JobEvent",
-    "AuditEvent",
-    "Diagnostic",
-    "EMBEDDING_DIM",
+    "MemoryItem",
+    "MemorySource",
+    "Message",
+    "ModelRecord",
+    "ToolRun",
 ]

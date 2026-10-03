@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.core.events import event_bus
@@ -95,7 +95,7 @@ class BackgroundLearningService:
                 await self._run_next_job()
             except asyncio.CancelledError:
                 raise
-            except Exception:  # noqa: BLE001 - never let the worker die
+            except Exception:
                 logger.exception("background loop iteration failed")
             await asyncio.sleep(self.governor.next_delay(delay))
 
@@ -191,7 +191,7 @@ class BackgroundLearningService:
             "recentLatencyMs": self.governor.recent_latency_ms,
             "tasks": tasks,
             "error": error,
-            "capturedAt": datetime.now(timezone.utc).isoformat(),
+            "capturedAt": datetime.now(UTC).isoformat(),
         }
 
 

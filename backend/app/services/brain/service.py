@@ -11,7 +11,7 @@ import hashlib
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -91,7 +91,7 @@ def freshness_score(
     if reference is None:
         return 0.0
     if reference.tzinfo is None:
-        reference = reference.replace(tzinfo=timezone.utc)
+        reference = reference.replace(tzinfo=UTC)
     ttl_hours = FRESHNESS_TTL_HOURS.get(policy, FRESHNESS_TTL_HOURS["medium"])
     age_hours = max(0.0, (now - reference).total_seconds() / 3600.0)
     score = 100.0 * (1.0 - min(age_hours / ttl_hours, 1.0))
@@ -130,7 +130,7 @@ class BrainService:
         normalized = normalize_content(f"{candidate.title} {candidate.content}")
         keywords = candidate.keywords or extract_keywords(normalized)
         embedding, embedding_model = await self._embed(session, normalized)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         ttl_hours = FRESHNESS_TTL_HOURS.get(candidate.freshness_policy, 24 * 30)
         expires_at = now + timedelta(hours=ttl_hours) if ttl_hours < 24 * 365 else None
 
@@ -159,7 +159,7 @@ class BrainService:
         started = time.perf_counter()
         repo = MemoryRepository(session)
         result = LookupResult()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cache_key = hashlib.sha256(normalize_content(query).encode("utf-8")).hexdigest()[:40]
 
         # L1 hot cache first: a promoted query result avoids all vector work.
@@ -246,7 +246,7 @@ class BrainService:
         memories = await repo.list_memories(
             layer=layer, status=status, search=query, limit=limit, offset=offset
         )
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for memory in memories:
             self._apply_freshness(memory, now)
         return memories

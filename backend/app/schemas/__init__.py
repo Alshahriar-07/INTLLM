@@ -296,6 +296,31 @@ class ApiKeyCreatedResponse(BaseModel):
     secret: str  # shown exactly once
 
 
+# --- Local API server ------------------------------------------------------
+class ApiServerStatusOut(BaseModel):
+    state: Literal["starting", "running", "stopped", "error", "restarting"]
+    reachable: bool
+    accessMode: Literal["local", "lan"]
+    storedAccessMode: Literal["local", "lan"]
+    lanEnabled: bool
+    requiresRestart: bool
+    bindHost: str
+    port: int
+    localBaseUrl: str
+    lanBaseUrl: str | None = None
+    lanAddresses: list[str] = Field(default_factory=list)
+    keyCount: int = 0
+    hasKey: bool = False
+    keyStoreAvailable: bool = False
+    ollama: ServiceState | None = None
+    detail: str | None = None
+    checkedAt: str
+
+
+class ApiServerAccessRequest(BaseModel):
+    mode: Literal["local", "lan"]
+
+
 # --- System ----------------------------------------------------------------
 class SystemStatusResponse(BaseModel):
     connected: bool
@@ -375,11 +400,13 @@ class AgentWorkspaceRequest(BaseModel):
 class AgentWorkspaceOut(BaseModel):
     configured: bool
     path: str | None = None
+    name: str | None = None
     exists: bool = False
     writable: bool = False
     fileCount: int | None = None
     sessionGrants: list[str] = Field(default_factory=list)
     terminalEnabled: bool = True
+    permissionMode: Literal["allow", "ask"] = "ask"
 
 
 class AgentFsEntryOut(BaseModel):
@@ -431,6 +458,21 @@ class AgentTerminalRequest(BaseModel):
 class AgentPermissionRequest(BaseModel):
     operation: str
     decision: Literal["allow_session", "revoke"]
+
+
+class AgentPermissionModeRequest(BaseModel):
+    mode: Literal["allow", "ask"]
+
+
+class AgentPermissionDecisionRequest(BaseModel):
+    request_id: str
+    decision: Literal["allow", "deny"]
+
+
+class AgentToolSpecOut(BaseModel):
+    name: str
+    description: str
+    args: dict[str, str] = Field(default_factory=dict)
 
 
 # --- Diagnostics -----------------------------------------------------------

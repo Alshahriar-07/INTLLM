@@ -12,6 +12,7 @@ import json
 
 import httpx
 import pytest
+
 from app.api.dependencies import require_api_key
 from app.api.routes import openai as openai_route
 from app.main import app
@@ -175,6 +176,48 @@ async def test_chat_completion_streaming_frames(monkeypatch, overrides_cleanup):
     assert contents == "Hello"
     assert payloads[-1]["choices"][0]["finish_reason"] == "stop"
     assert response.text.rstrip().endswith("data: [DONE]")
+
+
+async def test_chat_completion_model_not_found_returns_404(monkeypatch, overrides_cleanup):
+    from app.services.runtime.base import ModelNotFound
+
+    class _NotFoundChat:
+        async def resolve_model(self, requested):
+            return requested or "missing"
+
+        async def complete(self, request):
+            raise ModelNotFound("model 'missing' not found")
+
+    monkeypatch.setattr(openai_route, "get_chat_service", lambda: _NotFoundChat())
+    client = _authenticated_client(monkeypatch)
+    async with client as c:
+        response = await c.post(
+            "/v1/chat/completions",
+            json={"model": "missing", "messages": [{"role": "user", "content": "Hi"}]},
+        )
+    assert response.status_code == 404
+    assert response.json()["error"]["type"] == "not_found"
+
+
+async def test_chat_completion_timeout_returns_504(monkeypatch, overrides_cleanup):
+    from app.core.errors import TimeoutError_
+
+    class _TimeoutChat:
+        async def resolve_model(self, requested):
+            return requested or MODEL
+
+        async def complete(self, request):
+            raise TimeoutError_("Ollama request timed out")
+
+    monkeypatch.setattr(openai_route, "get_chat_service", lambda: _TimeoutChat())
+    client = _authenticated_client(monkeypatch)
+    async with client as c:
+        response = await c.post(
+            "/v1/chat/completions",
+            json={"model": MODEL, "messages": [{"role": "user", "content": "Hi"}]},
+        )
+    assert response.status_code == 504
+    assert response.json()["error"]["type"] == "timeout"
 
 
 async def test_chat_completion_ollama_unavailable(monkeypatch, overrides_cleanup):

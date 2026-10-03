@@ -88,6 +88,10 @@ if ($Version -eq 'latest' -or -not $Version) {
   $baseUrl = "https://github.com/$Repo/releases/download/$tag"
 }
 if (-not $tag) { Fail "could not resolve a release version for $Repo" }
+# Release asset names carry the version, e.g. INTLLM-v1.1.0-win64x.exe.
+$versionNum = $tag -replace '^v', ''
+$portableName = "INTLLM-v$versionNum-win64x.exe"
+$setupName = "INTLLM-v$versionNum-Setup.exe"
 Done 'Release' $tag
 
 $tmp = Join-Path $env:TEMP ('intllm-' + [guid]::NewGuid().ToString('N'))
@@ -178,18 +182,18 @@ try {
   $exePath = Join-Path $installDir $exeName
   $existing = Test-Path $exePath
 
-  $setupExpected = Get-ExpectedHash 'INTLLM-Setup.exe'
+  $setupExpected = Get-ExpectedHash $setupName
   $useSetup = ($env:INTLLM_USE_SETUP -eq '1') -and $setupExpected
 
   if ($useSetup) {
-    $setup = Get-Verified 'INTLLM-Setup.exe'
-    Step 'Installing runtime (INTLLM-Setup.exe)'
+    $setup = Get-Verified $setupName
+    Step "Installing runtime ($setupName)"
     $proc = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
-    if ($proc.ExitCode -ne 0) { Fail "INTLLM-Setup.exe exited with code $($proc.ExitCode)" }
+    if ($proc.ExitCode -ne 0) { Fail "$setupName exited with code $($proc.ExitCode)" }
     if (-not (Test-Path $exePath)) { Fail 'installer did not place INTLLM.exe where expected' }
     Done 'Runtime installed'
   } else {
-    $portable = Get-Verified 'INTLLM.exe'
+    $portable = Get-Verified $portableName
     Step $(if ($existing) { 'Updating runtime' } else { 'Installing runtime' })
     New-Item -ItemType Directory -Force -Path $installDir | Out-Null
     Copy-Item -Path $portable -Destination $exePath -Force

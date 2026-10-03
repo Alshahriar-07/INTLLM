@@ -16,11 +16,25 @@ export type ChatMode = 'chat' | 'agent';
 export interface AgentWorkspace {
   configured: boolean;
   path: string | null;
+  name?: string | null;
   exists: boolean;
   writable: boolean;
   fileCount: number | null;
   sessionGrants: string[];
   terminalEnabled: boolean;
+  permissionMode?: AgentPermissionMode;
+}
+
+export type AgentPermissionMode = 'allow' | 'ask';
+
+export interface AgentApprovalRequest {
+  request_id: string;
+  tool: string;
+  target?: string | null;
+  summary: string;
+  command?: string | null;
+  cwd?: string | null;
+  risk: string;
 }
 
 export interface AgentFsEntry {

@@ -202,7 +202,9 @@ async def chat_completions(
             elif event_type == "chat.error":
                 data = event.get("data") or {}
                 message = data.get("message") if isinstance(data, dict) else str(data)
-                yield _error_frame(message or "generation failed", "internal_error")
+                yield _error_frame(
+                    message or "generation failed", _error_type_for(message or "")
+                )
 
         yield _sse_done()
 
@@ -213,3 +215,13 @@ async def chat_completions(
 
 def _sse_done() -> str:
     return "data: [DONE]\n\n"
+
+
+def _error_type_for(message: str) -> str:
+    """Map an orchestrator error to an OpenAI-style error ``type``."""
+    lowered = message.lower()
+    if "not found" in lowered or "404" in lowered:
+        return "invalid_request_error"
+    if "timeout" in lowered or "timed out" in lowered:
+        return "timeout"
+    return "internal_error"

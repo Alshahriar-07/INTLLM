@@ -12,7 +12,7 @@ import ipaddress
 import re
 import socket
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -40,7 +40,7 @@ _BLOCKED_HOSTS = {"localhost", "metadata.google.internal", "169.254.169.254"}
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 @dataclass(slots=True)
@@ -127,7 +127,7 @@ class WebService:
                 response = await client.post(url, data={"q": query})
                 response.raise_for_status()
                 body = response.text
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ServiceUnavailableError(
                 "Web search provider is unavailable", details={"reason": str(exc)}
             ) from exc
@@ -169,7 +169,7 @@ class WebService:
                 )
                 response.raise_for_status()
                 payload = response.json()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ServiceUnavailableError(
                 "SearXNG provider is unavailable", details={"reason": str(exc)}
             ) from exc
@@ -202,7 +202,7 @@ class WebService:
                 response.raise_for_status()
                 content_type = response.headers.get("content-type", "")
                 body = response.text
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ServiceUnavailableError(
                 "Web page could not be retrieved", details={"reason": str(exc)}
             ) from exc

@@ -173,7 +173,7 @@ async def _systemd_control(action: str) -> tuple[bool, str | None]:
             stderr=asyncio.subprocess.PIPE,
         )
         _, stderr = await asyncio.wait_for(proc.communicate(), timeout=20)
-    except (FileNotFoundError, OSError, asyncio.TimeoutError) as exc:
+    except (TimeoutError, FileNotFoundError, OSError) as exc:
         return False, str(exc)
     if proc.returncode != 0:
         return False, stderr.decode("utf-8", "replace").strip() or f"systemctl exit {proc.returncode}"
@@ -218,11 +218,7 @@ def _pids_matching() -> list[int]:
             name = (proc.info.get("name") or "").lower()
             cmdline = " ".join(proc.info.get("cmdline") or []).lower()
             exe = (proc.info.get("exe") or "").lower()
-            if "ollama" in name and "ollama app" not in name:
-                pids.append(proc.pid)
-            elif "ollama" in exe and " serve" in f" {cmdline}":
-                pids.append(proc.pid)
-            elif cmdline.strip() in ("ollama serve",) or cmdline.endswith("ollama serve"):
+            if "ollama" in name and "ollama app" not in name or "ollama" in exe and " serve" in f" {cmdline}" or cmdline.strip() in ("ollama serve",) or cmdline.endswith("ollama serve"):
                 pids.append(proc.pid)
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue

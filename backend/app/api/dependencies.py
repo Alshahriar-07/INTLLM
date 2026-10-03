@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import AuthenticationError, ServiceUnavailableError
 from app.db.models import ApiKey
 from app.db.session import get_database
+from app.services.api_server.service import is_loopback_host
 from app.services.security.service import get_api_key_service
 
 
@@ -69,4 +70,4 @@ async def require_api_key(
 
 
 def _is_loopback(host: str | None) -> bool:
-    return host in ("127.0.0.1", "::1", "localhost", "testclient")
+    return is_loopback_host(host)

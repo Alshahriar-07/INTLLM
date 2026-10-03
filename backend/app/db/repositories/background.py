@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -65,9 +65,9 @@ class BackgroundRepository:
         if status is not None:
             job.status = status
             if status == "running" and job.started_at is None:
-                job.started_at = datetime.now(timezone.utc)
+                job.started_at = datetime.now(UTC)
             if status in ("completed", "failed"):
-                job.finished_at = datetime.now(timezone.utc)
+                job.finished_at = datetime.now(UTC)
         if progress is not None:
             job.progress = progress
         if current_action is not None:

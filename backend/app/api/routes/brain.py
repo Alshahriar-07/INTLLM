@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -125,7 +125,7 @@ async def get_memory(
     memory = await MemoryRepository(session).get_memory(memory_id)
     if memory is None:
         raise NotFoundError(f"Memory not found: {memory_id}")
-    get_brain_service()._apply_freshness(memory, datetime.now(timezone.utc))
+    get_brain_service()._apply_freshness(memory, datetime.now(UTC))
     return _to_out(memory)
 
 

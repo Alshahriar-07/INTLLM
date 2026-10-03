@@ -5,6 +5,78 @@ All notable changes to INTLLM are documented here. The format follows
 adheres to semantic versioning. The authoritative version lives in
 `backend/app/__init__.py`.
 
+## [1.1.0] — 2026-10-03
+
+INTLLM becomes a **real local-first desktop AI application**: native window,
+local PostgreSQL persistence, persistent chat history and memory, a
+model-driven Agent with a permission gate, a local OpenAI-compatible API with
+LAN opt-in, and a full release/documentation/security pass.
+
+### Added
+- **Desktop application** (`backend/app/desktop.py`): the packaged `INTLLM.exe`
+  now opens a native window hosting the existing UI (WebView2 via pywebview)
+  instead of opening a browser. It starts the local backend internally, shows a
+  startup readiness screen for PostgreSQL / Ollama / INTLLM Backend, offers
+  **Retry** and a degraded **Continue anyway** path, and shuts the backend down
+  cleanly on close.
+- **Local service lifecycle management**: INTLLM starts only the backend it owns,
+  attaches to an existing INTLLM instance instead of starting a duplicate, and
+  never kills unrelated processes.
+- **Model-driven Agent loop** (`backend/app/services/agent/loop.py`): the Agent
+  runs a bounded loop in which the model proposes tool calls, INTLLM validates
+  and executes them, and results are fed back until a final answer.
+- **Interactive permission broker** (`backend/app/services/agent/permissions.py`):
+  Ask Me pauses the Agent loop and raises Allow/Deny requests; a timeout or
+  cancelled stream resolves as **deny**.
+- **Agent file/edit tools**: `fs.edit` (exact-text replace) and `fs.mkdir`
+  alongside list/read/search/write/delete/move and terminal.
+- **API server service and endpoints** (`/api/api-server/status`, `/access`) with
+  real reachability probing and a persisted local/LAN access mode.
+- **Database health model** (`backend/app/db/health.py`): four-state lifecycle
+  (`initializing` / `connected` / `disconnected` / `error`) with classified,
+  actionable diagnostics and DSN password sanitization.
+- **Rich database health endpoint** (`/api/health/database`).
+- **Desktop build pipeline**: windowed PyInstaller executable and an Inno Setup
+  installer produced as versioned release artifacts.
+- **Release artifacts**: `INTLLM-v1.1.0-win64x.exe`, `INTLLM-v1.1.0-Setup.exe`,
+  `intllm-1.1.0-py3-none-any.whl`, `intllm-1.1.0.tar.gz`, `install.ps1`,
+  `install.sh`, `SHA256.txt`.
+- **Documentation**: `SECURITY.md`, `INSTALL.md`, `API.md`, `AGENT.md`,
+  `MEMORY.md`, `DATABASE.md`, `CONFIGURATION.md`, `ARCHITECTURE.md`,
+  `DEVELOPMENT.md`, `CONTRIBUTING.md`.
+- **Headless desktop smoke test** (`INTLLM_DESKTOP_HEADLESS=1`) so the packaged
+  build's backend + bundled frontend can be verified without a GUI session.
+
+### Changed
+- **Packaged application entry point** now launches the desktop window; the
+  launcher's browser-opening behavior is removed from the production path.
+- **Windows executable is now windowed** (no console window) and named
+  `INTLLM-v1.1.0-win64x.exe`; the installed binary remains `INTLLM.exe`.
+- **Installer** is produced as `INTLLM-v1.1.0-Setup.exe`.
+- **Version** bumped to **1.1.0** across the Python package, frontend, CLI,
+  desktop app, installers, packaging metadata and documentation.
+- **Installers** resolve versioned release asset names
+  (`INTLLM-v<version>-win64x.exe`, `INTLLM-v<version>-Setup.exe`).
+
+### Fixed
+- `INTLLM.exe --version` / `--help` still work from a terminal now that the
+  executable is windowed (it attaches to the launching console when present).
+- The Python package ships the `desktop` extra (`pywebview`) so a native window
+  can be installed outside the bundled Windows build.
+
+### Security
+- LAN access remains **default OFF**; only `/v1` is exposed when enabled and it
+  still requires an API key, while management routes stay loopback-only.
+- Agent workspace boundary, permission gate and terminal approval enforced.
+- Secrets redacted from logs; DSN passwords sanitized from diagnostics; no
+  secrets in release artifacts.
+
+### Documentation
+- Complete documentation audit; stale browser-only workflow references removed
+  from the production path (development mode retains it).
+- New security, installation, API, Agent, memory, database, configuration,
+  architecture, development and contributing documents.
+
 ## [1.0.2] — 2026-10-02
 
 Agent mode, parameter-based model classification, PostgreSQL readiness clarity,

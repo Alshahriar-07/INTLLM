@@ -9,6 +9,7 @@ from __future__ import annotations
 import sys
 
 import pytest
+
 from app.core.errors import NotFoundError, PermissionDeniedError, ValidationError
 from app.services.agent.service import AgentOperation, AgentService
 
@@ -58,22 +59,38 @@ async def test_path_escape_is_blocked(agent):
         await service.read_file("../../etc/passwd")
 
 
-async def test_new_file_is_allowed_but_overwrite_needs_approval(agent):
+async def test_create_and_overwrite_require_approval_in_ask_mode(agent):
     service, tmp_path = agent
     await service.set_workspace(str(tmp_path))
+    await service.set_permission_mode("ask")
 
-    created = await service.write_file("notes.txt", "hello")
+    # ASK ME: creating a new workspace file needs explicit approval.
+    blocked = await service.write_file("notes.txt", "hello")
+    assert blocked.status == "permission_required"
+    assert not (tmp_path / "notes.txt").exists()
+
+    created = await service.write_file("notes.txt", "hello", decision="allow")
     assert created.status == "completed"
     assert created.operation == AgentOperation.CREATE.value
     assert (tmp_path / "notes.txt").read_text(encoding="utf-8") == "hello"
 
-    blocked = await service.write_file("notes.txt", "world")
-    assert blocked.status == "permission_required"
+    overwrite = await service.write_file("notes.txt", "world")
+    assert overwrite.status == "permission_required"
     assert (tmp_path / "notes.txt").read_text(encoding="utf-8") == "hello"
 
     allowed = await service.write_file("notes.txt", "world", decision="allow")
     assert allowed.status == "completed"
     assert (tmp_path / "notes.txt").read_text(encoding="utf-8") == "world"
+
+
+async def test_allow_mode_auto_approves_create(agent):
+    service, tmp_path = agent
+    await service.set_workspace(str(tmp_path))
+    await service.set_permission_mode("allow")
+
+    created = await service.write_file("auto.txt", "ok")
+    assert created.status == "completed"
+    assert (tmp_path / "auto.txt").read_text(encoding="utf-8") == "ok"
 
 
 async def test_delete_requires_approval_and_session_grant(agent):
@@ -111,6 +128,7 @@ async def test_cannot_delete_workspace_root(agent):
 async def test_move_and_mkdir(agent):
     service, tmp_path = agent
     await service.set_workspace(str(tmp_path))
+    await service.set_permission_mode("allow")
     await service.create_dir("pkg")
     assert (tmp_path / "pkg").is_dir()
 

@@ -33,19 +33,51 @@ hiddenimports = [
     *collect_submodules("asyncpg"),
     *collect_submodules("app"),
     "app.launcher",
+    "app.desktop",
     "app.main",
     "anyio._backends._asyncio",
     "httpx",
     "h11",
     "psutil",
+    # Native desktop window (WebView2 via pywebview / pythonnet).
+    "webview",
+    "webview.platforms.winforms",
+    "webview.platforms.edgechromium",
+    "clr_loader",
+    "pythonnet",
 ]
 
-datas = [
+# pywebview loads its JS API shim from disk at runtime; bundle it explicitly.
+from PyInstaller.utils.hooks import collect_data_files as _collect_data_files
+
+datas = list(_collect_data_files("webview"))
+
+datas += [
     # Production frontend build, served by FastAPI from the packaged exe.
     ("../dist", "frontend"),
 ]
 # Package metadata some libraries probe at runtime.
 datas += collect_data_files("pydantic")
+
+# --- INTLLM-managed local PostgreSQL -----------------------------------------
+# The app provisions its own local PostgreSQL (pgvector included) inside the
+# per-user data directory. Binaries come from the `pgserver` package when it
+# is installed at build time; without it the app falls back to external
+# detection with clear setup guidance (never a fabricated status).
+try:
+    from pathlib import Path as _Path
+
+    import pgserver as _pgserver
+
+    _pg_install = _Path(_pgserver.__file__).resolve().parent / "pginstall"
+    if _pg_install.is_dir():
+        datas.append((str(_pg_install), "postgres"))
+        hiddenimports += ["pgserver", "pgserver.utils"]
+        print(f"spec: bundling managed PostgreSQL binaries from {_pg_install}")
+    else:
+        print("spec: WARNING pgserver found but pginstall/ is missing")
+except ImportError:
+    print("spec: pgserver not installed; building without managed PostgreSQL binaries")
 
 # uvicorn's httptools C extension misbehaves when frozen (accepts connections
 # but never answers them); the launcher forces h11, so the httptools protocol
@@ -93,7 +125,8 @@ exe = EXE(
     upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,  # console app: visible window doubles as shutdown control
+    # Windowed app: no console window. The desktop window is the application.
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

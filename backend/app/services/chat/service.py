@@ -23,7 +23,7 @@ from app.db.repositories.models import ModelRepository
 from app.db.session import get_database
 from app.services.background.service import get_background_service
 from app.services.brain.service import get_brain_service
-from app.services.runtime.base import ChatMessage, RuntimeUnavailable
+from app.services.runtime.base import ChatMessage, ModelNotFound, RuntimeUnavailable
 from app.services.runtime.ollama import get_ollama_adapter
 from app.services.web.service import get_web_service
 
@@ -147,6 +147,12 @@ class ChatService:
                     "workspace": workspace if request.mode == "agent" else None,
                 },
             }
+            # --- Agent mode: real multi-step tool loop -----------------
+            if request.mode == "agent":
+                async for event in self._stream_agent(request, model=model):
+                    yield event
+                return
+
             yield {"type": "chat.thinking", "data": {"label": "Planning retrieval and context"}}
 
             # --- Brain / memory ---------------------------------------
@@ -251,7 +257,6 @@ class ChatService:
             yield {"type": "label", "data": {"label": "Inference", "status": "running"}}
 
             accumulated: list[str] = []
-            model_error: str | None = None
             async for chunk in self._adapter.chat(
                 model, context, options=self._effective_options(request.options)
             ):
@@ -268,7 +273,6 @@ class ChatService:
                         },
                     }
                 elif chunk.type == "error":
-                    model_error = chunk.error
                     yield {"type": "chat.error", "data": {"message": chunk.error or "Model error"}}
                     break
 
@@ -277,31 +281,17 @@ class ChatService:
             background.record_interactive_latency(total_ms)
 
             # --- Persistence ------------------------------------------
-            conversation_id = request.conversation_id
-            if response_text and not model_error:
-                try:
-                    database = get_database()
-                    async with database.session() as session:
-                        repo = ConversationRepository(session)
-                        if conversation_id is None:
-                            conversation = await repo.create(
-                                title=self._title_from(request.messages), model_name=model
-                            )
-                            conversation_id = conversation.id
-                        await repo.add_message(
-                            conversation_id, "user", self._latest_user_content(request.messages)
-                        )
-                        await repo.add_message(
-                            conversation_id,
-                            "assistant",
-                            response_text,
-                            model_name=model,
-                            activities=activities,
-                            sources=sources_payload,
-                            memory_used=len(memories),
-                        )
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("failed to persist conversation", extra={"intllm_extra": {"error": str(exc)}})
+            # Every exchange is persisted locally, including partial answers
+            # and model errors, so chat history never silently disappears.
+            conversation_id = await self._persist_exchange(
+                request,
+                conversation_id=request.conversation_id,
+                model=model,
+                response_text=response_text,
+                activities=activities,
+                sources=sources_payload,
+                memories=memories,
+            )
 
             yield {
                 "type": "chat.completed",
@@ -321,6 +311,141 @@ class ChatService:
                 {"conversation_id": str(conversation_id) if conversation_id else None, "total_ms": total_ms},
             )
 
+    async def _stream_agent(
+        self, request: ChatRequest, *, model: str
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Run the real Agent loop and persist the exchange.
+
+        Every forwarded event corresponds to an actual tool operation or model
+        step; failures are surfaced (and persisted) rather than hidden.
+        """
+        from app.services.agent.loop import AgentLoop
+        from app.services.agent.permissions import get_permission_broker
+        from app.services.agent.service import get_agent_service
+
+        started = time.perf_counter()
+        service = get_agent_service()
+        await service.ensure_loaded()
+
+        if service.workspace is None:
+            message = "No Agent workspace is selected. Choose a folder to begin."
+            yield {
+                "type": "chat.error",
+                "data": {"message": message, "code": "no_workspace"},
+            }
+            await self._persist_exchange(
+                request,
+                conversation_id=request.conversation_id,
+                model=model,
+                response_text="",
+                activities=[],
+                sources=[],
+                memories=[],
+            )
+            yield self._agent_completed(request, model=model, activities=[], total_ms=0.0)
+            return
+
+        loop = AgentLoop(
+            service=service, adapter=self._adapter, broker=get_permission_broker()
+        )
+        accumulated: list[str] = []
+        activities: list[dict[str, Any]] = []
+
+        async for event in loop.run(
+            model=model,
+            messages=request.messages,
+            options=self._effective_options(request.options),
+        ):
+            event_type = event["type"]
+            data = event.get("data") or {}
+            if event_type == "assistant.delta":
+                accumulated.append(str(data.get("content", "")))
+                yield event
+            elif event_type == "agent.error":
+                message = str(data.get("message", "Agent error"))
+                activities.append(
+                    {
+                        "id": _new_id(),
+                        "type": "agent_error",
+                        "label": "Agent error",
+                        "status": "failed",
+                        "detail": message,
+                    }
+                )
+                yield {
+                    "type": "chat.error",
+                    "data": {"message": message, "code": data.get("code", "agent_error")},
+                }
+            elif event_type == "agent.tool.completed":
+                status = str(data.get("status", "completed"))
+                activities.append(
+                    {
+                        "id": _new_id(),
+                        "type": "agent_tool",
+                        "label": str(data.get("tool", "tool")),
+                        "status": {
+                            "completed": "completed",
+                            "cancelled": "cancelled",
+                        }.get(status, "failed"),
+                        "latencyMs": data.get("durationMs"),
+                        "detail": data.get("detail") or data.get("target"),
+                    }
+                )
+                yield event
+            else:
+                yield event
+
+        response_text = "".join(accumulated)
+        total_ms = round((time.perf_counter() - started) * 1000.0, 1)
+        conversation_id = await self._persist_exchange(
+            request,
+            conversation_id=request.conversation_id,
+            model=model,
+            response_text=response_text,
+            activities=activities,
+            sources=[],
+            memories=[],
+        )
+        yield self._agent_completed(
+            request,
+            model=model,
+            activities=activities,
+            total_ms=total_ms,
+            conversation_id=conversation_id,
+        )
+        await event_bus.emit(
+            "chat",
+            "chat.completed",
+            {
+                "conversation_id": str(conversation_id) if conversation_id else None,
+                "total_ms": total_ms,
+                "mode": "agent",
+            },
+        )
+
+    @staticmethod
+    def _agent_completed(
+        request: ChatRequest,
+        *,
+        model: str,
+        activities: list[dict[str, Any]],
+        total_ms: float,
+        conversation_id: Any = None,
+    ) -> dict[str, Any]:
+        final_id = conversation_id if conversation_id is not None else request.conversation_id
+        return {
+            "type": "chat.completed",
+            "data": {
+                "message_id": _new_id(),
+                "conversation_id": str(final_id) if final_id else None,
+                "total_ms": total_ms,
+                "activities": activities,
+                "sources": [],
+                "memory_used": 0,
+                "model": model,
+            },
+        }
+
     async def complete(
         self, request: ChatRequest
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
@@ -337,7 +462,7 @@ class ChatService:
             elif chunk.type == "done":
                 metrics = chunk.metrics
             elif chunk.type == "error":
-                raise RuntimeUnavailable(chunk.error or "Model error")
+                raise self.classify_runtime_error(chunk.error or "Model error")
         sources: list[dict[str, Any]] = []
         if request.use_web:
             results = await self._web.search(self._latest_user_content(request.messages))
@@ -345,6 +470,72 @@ class ChatService:
         return model, {"content": "".join(pieces), "metrics": metrics}, sources
 
     # --- helpers ----------------------------------------------------------
+    @staticmethod
+    def classify_runtime_error(message: str) -> Exception:
+        """Map a runtime error string onto the closest HTTP-meaningful error.
+
+        OpenAI-compatible clients distinguish a missing model (404) from an
+        unavailable runtime (503) and a timeout (504).
+        """
+        lowered = message.lower()
+        if "model" in lowered and ("not found" in lowered or "404" in lowered):
+            return ModelNotFound(message)
+        if "timeout" in lowered or "timed out" in lowered:
+            from app.core.errors import TimeoutError_
+
+            return TimeoutError_(message)
+        return RuntimeUnavailable(message)
+
+    async def _persist_exchange(
+        self,
+        request: ChatRequest,
+        *,
+        conversation_id: uuid.UUID | None,
+        model: str,
+        response_text: str,
+        activities: list[dict[str, Any]],
+        sources: list[dict[str, Any]],
+        memories: list[MemoryItem],
+    ) -> uuid.UUID | None:
+        """Persist the user message and (any) assistant reply locally.
+
+        PostgreSQL is the source of truth for chat history. If a supplied
+        ``conversation_id`` is unknown (e.g. deleted elsewhere) a new
+        conversation is created instead of failing.
+        """
+        user_text = self._latest_user_content(request.messages)
+        if not user_text and not response_text:
+            return conversation_id
+        try:
+            database = get_database()
+            async with database.session() as session:
+                repo = ConversationRepository(session)
+                if conversation_id is not None and not await repo.exists(conversation_id):
+                    conversation_id = None
+                if conversation_id is None:
+                    conversation = await repo.create(
+                        title=self._title_from(request.messages), model_name=model
+                    )
+                    conversation_id = conversation.id
+                if user_text:
+                    await repo.add_message(conversation_id, "user", user_text)
+                if response_text:
+                    await repo.add_message(
+                        conversation_id,
+                        "assistant",
+                        response_text,
+                        model_name=model,
+                        activities=activities,
+                        sources=sources,
+                        memory_used=len(memories),
+                    )
+        except Exception as exc:  # noqa: BLE001 - persistence must not break chat
+            logger.warning(
+                "failed to persist conversation",
+                extra={"intllm_extra": {"error": str(exc)}},
+            )
+        return conversation_id
+
     @staticmethod
     def _latest_user_content(messages: list[ChatMessage]) -> str:
         for message in reversed(messages):

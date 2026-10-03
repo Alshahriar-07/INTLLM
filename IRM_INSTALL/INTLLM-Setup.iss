@@ -1,12 +1,12 @@
 ; INTLLM Windows installer (Inno Setup 6.3+).
 ;
 ; Build (from this directory):
-;   ISCC.exe /DAppVersion=1.0.2 /DSourceExe=..\build\release\INTLLM.exe INTLLM-Setup.iss
+;   ISCC.exe /DAppVersion=1.1.0 INTLLM-Setup.iss
 ;
 ; Or from the repository root:
 ;   python scripts/build_release.py
 ;
-; Produces: build\release\INTLLM-Setup.exe
+; Produces: build\release\INTLLM-v<version>-Setup.exe
 ;
 ; Behaviour:
 ;   * per-user install to %LOCALAPPDATA%\Programs\INTLLM (no admin prompt)
@@ -21,10 +21,13 @@
   #define AppVersion "0.0.0"
 #endif
 #ifndef SourceExe
-  #define SourceExe "..\build\release\INTLLM.exe"
+  #define SourceExe "..\build\release\INTLLM-v1.1.0-win64x.exe"
 #endif
 #ifndef OutputDir
   #define OutputDir "..\build\release"
+#endif
+#ifndef OutputBaseFilename
+  #define OutputBaseFilename "INTLLM-v1.1.0-Setup"
 #endif
 #ifndef AppIcon
   #define AppIcon "..\assets\ico\INTLLM.ico"
@@ -49,7 +52,7 @@ DefaultGroupName=INTLLM
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir={#OutputDir}
-OutputBaseFilename=INTLLM-Setup
+OutputBaseFilename={#OutputBaseFilename}
 SetupIconFile={#AppIcon}
 UninstallDisplayIcon={app}\INTLLM.exe
 UninstallDisplayName=INTLLM

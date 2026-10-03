@@ -73,11 +73,27 @@ def _cmd_doctor() -> int:
         print(f"INTLLM {__version__} - environment doctor")
         print(f"  config: host={settings.intllm_host} port={settings.intllm_port}")
 
+        from app.services.system import postgres_runtime
+
+        bin_dir = postgres_runtime.binaries_dir()
+        version = postgres_runtime.pg_version(bin_dir)
+        if bin_dir:
+            print(
+                f"  managed runtime: available ({version or 'unknown version'})"
+                f" - {bin_dir}"
+            )
+        else:
+            print(
+                "  managed runtime: not available "
+                "(install the 'postgres' extra or set INTLLM_PG_BINDIR)"
+            )
+
         database = get_database()
         db_ok, db_error = await database.ping()
         if db_ok:
             report = await inspect_database()
-            print(f"  postgres: {report.status}")
+            category = f" ({report.category})" if report.category else ""
+            print(f"  postgres: {report.status}{category}")
             if report.detail:
                 print(f"            {report.detail}")
             for action in report.actions:
@@ -85,7 +101,11 @@ def _cmd_doctor() -> int:
             if report.status != "running":
                 problems += 1
         else:
-            print(f"  postgres: unavailable ({db_error})")
+            from app.db.health import get_database_health
+
+            category = get_database_health().snapshot().category
+            suffix = f" ({category})" if category else ""
+            print(f"  postgres: unavailable{suffix} ({db_error})")
             problems += 1
 
         ollama_ok, ollama_error = await is_running()

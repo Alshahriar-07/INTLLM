@@ -13,8 +13,8 @@ __all__ = [
     "ChatMessage",
     "ModelInfo",
     "ModelRuntime",
+    "OllamaAdapter",
     "RuntimeUnavailable",
     "StreamChunk",
-    "OllamaAdapter",
     "get_ollama_adapter",
 ]

@@ -54,6 +54,13 @@ Changelog = "https://github.com/Alshahriar-07/INTLLM/blob/main/CHANGELOG.md"
 [project.optional-dependencies]
 browser = ["playwright>=1.48.0"]
 gpu = ["pynvml>=11.5.0"]
+# Bundled PostgreSQL + pgvector binaries for the INTLLM-managed local database
+# runtime (used by the packaged desktop application).
+postgres = ["pgserver>=0.1.4"]
+# Native desktop window for the production application (WebView2 on Windows).
+# The Windows executable bundles this; other platforms may install it to get a
+# desktop window instead of the headless backend + browser workflow.
+desktop = ["pywebview>=5.0"]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
@@ -85,10 +92,5 @@ addopts = "-q"
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
 
-[tool.ruff.lint]
-# Pragmatic baseline: real errors + import hygiene. Line length is left to the
-# formatter/editor (E501) so existing long strings are not churned.
-select = ["E", "F", "I"]
-ignore = ["E501"]
+

@@ -6,8 +6,10 @@ import { Badge } from '../ui/Badge';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { BrainStats, brainService } from '../../lib/services/brainService';
+import { useIntllm } from '../../hooks/use-intllm';
 
 export const BrainDashboard: React.FC = () => {
+  const intllm = useIntllm();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLayer, setSelectedLayer] = useState<'ALL' | 'L0' | 'L1' | 'L2'>('ALL');
   const [memories, setMemories] = useState<MemoryItem[]>([]);
@@ -37,6 +39,20 @@ export const BrainDashboard: React.FC = () => {
     event.preventDefault();
     load(searchQuery.trim() || undefined);
   };
+
+  // Prefer the backend's real memory readiness (PostgreSQL + pgvector + schema)
+  // over inferring ``unavailable`` from a single failed fetch.
+  const memoryService = intllm.services?.memory;
+  const memoryReady = memoryService ? memoryService.status === 'connected' : connected;
+  const memoryLabel = memoryService
+    ? memoryService.status === 'connected'
+      ? 'PostgreSQL Connected'
+      : memoryService.status === 'degraded'
+        ? 'Memory degraded'
+        : 'Memory store unavailable'
+    : connected
+      ? 'PostgreSQL Connected'
+      : 'PostgreSQL Service Offline';
 
   return (
     <div className="flex-1 overflow-y-auto"
@@ -219,7 +235,7 @@ export const BrainDashboard: React.FC = () => {
           </div>
           <div className="space-y-1">
             <h3 className="text-sm font-bold font-mono text-primary">
-              {loading ? 'Loading memories…' : connected ? 'No memories available' : 'Memory store unavailable'}
+              {loading ? 'Loading memories…' : memoryReady ? 'No memories available' : 'Memory store unavailable'}
             </h3>
             <p className="text-xs text-secondary font-sans max-w-sm mx-auto">
               {error ??
@@ -228,8 +244,8 @@ export const BrainDashboard: React.FC = () => {
           </div>
           <div className="pt-2">
             <Badge variant="outline" size="sm">
-              {connected ? <Database className="w-3 h-3 mr-1" /> : <WifiOff className="w-3 h-3 mr-1" />}
-              {connected ? 'PostgreSQL Connected' : 'PostgreSQL Service Offline'}
+              {memoryReady ? <Database className="w-3 h-3 mr-1" /> : <WifiOff className="w-3 h-3 mr-1" />}
+              {memoryLabel}
             </Badge>
           </div>
         </Card>

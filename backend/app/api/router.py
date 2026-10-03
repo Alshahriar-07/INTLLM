@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from app.api.routes import (
     agent,
     api_keys,
+    api_server,
     background,
     brain,
     browser,
@@ -34,5 +35,6 @@ api_router.include_router(web.router)
 api_router.include_router(tools.router)
 api_router.include_router(browser.router)
 api_router.include_router(api_keys.router)
+api_router.include_router(api_server.router)
 api_router.include_router(background.router)
 api_router.include_router(diagnostics.router)

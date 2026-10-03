@@ -4,35 +4,53 @@
  * Central transport boundary. Components never call `fetch` directly; they use
  * the service modules in `src/lib/services`, which use this client.
  *
- * Endpoint configuration comes from Vite environment variables:
- *   VITE_INTLLM_BASE_URL  (preferred, e.g. http://127.0.0.1:8000)
- *   VITE_INTLLM_HOST / VITE_INTLLM_PORT  (fallback)
+ * Endpoint resolution:
+ * - Production builds (desktop app / packaged server): this UI is SERVED BY the
+ *   INTLLM backend itself, so requests are same-origin (relative `/api`, `/v1`)
+ *   and automatically follow the effective port — including conflict-fallback
+ *   ports chosen at launch.
+ * - Vite dev server (`npm run dev`): the backend runs separately, configured
+ *   via VITE_INTLLM_BASE_URL (preferred) or VITE_INTLLM_HOST/VITE_INTLLM_PORT.
  *
- * NOTE: the supplied runtime port 240426 is NOT a valid TCP port and must never
- * be used to build a URL. It is documented in `.env.example` only.
+ * A TCP port is 1–65535. Values outside that range (e.g. the historical
+ * `240426`) are rejected instead of being turned into a URL.
  */
 
 const env = (import.meta as any).env ?? {};
+const IS_DEV = !!env.DEV;
 
 export const INTLLM_HOST: string = env.VITE_INTLLM_HOST || '127.0.0.1';
 export const INTLLM_PORT: string = env.VITE_INTLLM_PORT || '8000';
 
-/** Validated base URL, or `null` when the configured port is out of range. */
+/** Base URL ('' = same origin), or `null` when no usable endpoint exists. */
 function resolveBaseUrl(): string | null {
   const explicit: string | undefined = env.VITE_INTLLM_BASE_URL;
   if (explicit) return explicit.replace(/\/+$/, '');
 
+  // Production: the backend serves this UI — always same-origin.
+  if (!IS_DEV) return '';
+
   const port = Number(INTLLM_PORT);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    // Invalid port (e.g. the supplied 240426): do not fabricate a URL.
+    // Invalid port: do not fabricate a URL.
     return null;
   }
   return `http://${INTLLM_HOST}:${port}`;
 }
 
 export const INTLLM_BASE_URL: string | null = resolveBaseUrl();
-export const API_BASE: string | null = INTLLM_BASE_URL ? `${INTLLM_BASE_URL}/api` : null;
-export const OPENAI_BASE: string | null = INTLLM_BASE_URL ? `${INTLLM_BASE_URL}/v1` : null;
+export const API_BASE: string | null = INTLLM_BASE_URL === null ? null : `${INTLLM_BASE_URL}/api`;
+export const OPENAI_BASE: string | null = INTLLM_BASE_URL === null ? null : `${INTLLM_BASE_URL}/v1`;
+
+/** Absolute origin of the backend (for display: docs, settings, examples). */
+export const BACKEND_ORIGIN: string =
+  INTLLM_BASE_URL === null
+    ? ''
+    : INTLLM_BASE_URL === ''
+      ? typeof window !== 'undefined' && window.location
+        ? window.location.origin
+        : ''
+      : INTLLM_BASE_URL;
 
 const DEFAULT_TIMEOUT_MS = 15000;
 
@@ -55,6 +73,12 @@ export const CONNECTION_TIMEOUT_MS: number = (() => {
 
 /** True when a usable backend endpoint is configured. */
 export const isEndpointConfigured = (): boolean => API_BASE !== null;
+
+/** Display form of the API base (absolute), for docs and settings screens. */
+export const DISPLAY_API_BASE: string =
+  API_BASE === null ? 'unavailable' : `${BACKEND_ORIGIN}/api`;
+export const DISPLAY_OPENAI_BASE: string =
+  OPENAI_BASE === null ? 'unavailable' : `${BACKEND_ORIGIN}/v1`;
 
 export interface ApiResult<T> {
   ok: boolean;

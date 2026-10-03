@@ -10,7 +10,7 @@ rendered as N/A by the frontend.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -29,7 +29,7 @@ _VALID_STATES = ("running", "stopped", "starting", "stopping", "unavailable", "e
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class OllamaControlService:
@@ -152,7 +152,7 @@ class OllamaControlService:
         async with _OP_LOCK:
             try:
                 result = await self._apply(operation)
-            except Exception as exc:  # noqa: BLE001 - surfaced as real error
+            except Exception as exc:
                 logger.exception("ollama control failed", exc_info=exc)
                 self._state = "error"
                 self._last_error = str(exc)

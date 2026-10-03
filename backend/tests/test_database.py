@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 
 import pytest
+from sqlalchemy import text
+
 from app.config.settings import Settings
 from app.db import models  # noqa: F401 - register metadata
 from app.db.base import Base
@@ -21,7 +23,6 @@ from app.db.repositories.conversations import ConversationRepository
 from app.db.repositories.memory import MemoryRepository
 from app.db.session import Database
 from app.services.security.service import ApiKeyService
-from sqlalchemy import text
 
 TEST_URL = os.environ.get("INTLLM_TEST_DATABASE_URL")
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -179,6 +180,39 @@ async def test_memory_persistence_and_vector_search(database):
         stats = await repo.stats()
         assert stats["total"] == 1
         assert stats["indexed"] == 1
+
+
+async def test_initialize_verifies_schema_and_preserves_data(database, monkeypatch):
+    """First start initializes the schema; later starts reuse it unchanged.
+
+    Forces the SQLAlchemy-metadata path (no Alembic) so the test targets the
+    isolated test database rather than the globally-configured URL.
+    """
+    import app.db.session as session_mod
+    from app.services.system import db_init
+
+    monkeypatch.setattr(session_mod, "_database", database)
+    monkeypatch.setattr(db_init, "_alembic_config_path", lambda: None)
+
+    first = await db_init.initialize()
+    assert first.status == "running"
+    assert first.schema is True
+    assert first.missing_tables == []
+
+    async with database.session() as session:
+        repo = ConversationRepository(session)
+        conversation = await repo.create(title="keep me")
+        await repo.add_message(conversation.id, "user", "hello")
+
+    # A second startup must not reset or recreate anything.
+    second = await db_init.initialize()
+    assert second.status == "running"
+
+    async with database.session() as session:
+        loaded = await ConversationRepository(session).get(conversation.id)
+        assert loaded is not None
+        assert loaded.title == "keep me"
+        assert len(loaded.messages) == 1
 
 
 async def test_memory_keyword_search(database):

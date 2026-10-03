@@ -100,28 +100,31 @@ def copy_installers(release_dir: Path) -> None:
 
 
 def build_setup_installer(release_dir: Path, version: str) -> None:
-    """Build INTLLM-Setup.exe when Inno Setup's compiler is available."""
+    """Build the Windows installer when Inno Setup's compiler is available."""
     iscc = find_iscc()
+    setup_name = f"INTLLM-v{version}-Setup"
     if not iscc:
-        print("=== Skipping INTLLM-Setup.exe (Inno Setup 'iscc' not found)")
+        print(f"=== Skipping {setup_name}.exe (Inno Setup 'iscc' not found)")
         return
-    source_exe = release_dir / "INTLLM.exe"
+    source_exe = release_dir / f"INTLLM-v{version}-win64x.exe"
     if not source_exe.is_file():
-        print("=== Skipping INTLLM-Setup.exe (portable exe not built)")
+        print(f"=== Skipping {setup_name}.exe (portable exe not built)")
         return
-    print(f"=== Building INTLLM-Setup.exe with {iscc}")
+    print(f"=== Building {setup_name}.exe with {iscc}")
     run(
         [
             iscc,
             f"/DAppVersion={version}",
             f"/DOutputDir={release_dir.resolve()}",
+            f"/DSourceExe={source_exe.resolve()}",
+            f"/DOutputBaseFilename={setup_name}",
             str(ROOT / "IRM_INSTALL" / "INTLLM-Setup.iss"),
         ],
         ROOT / "IRM_INSTALL",
     )
-    setup = release_dir / "INTLLM-Setup.exe"
+    setup = release_dir / f"{setup_name}.exe"
     if not setup.is_file():
-        raise SystemExit("Inno Setup did not produce INTLLM-Setup.exe")
+        raise SystemExit(f"Inno Setup did not produce {setup_name}.exe")
 
 
 def main(argv: list[str] | None = None) -> int:

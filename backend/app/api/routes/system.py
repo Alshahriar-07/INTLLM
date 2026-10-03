@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
@@ -61,7 +61,7 @@ async def stream_system(interval: float = 3.0) -> StreamingResponse:
 
 @router.get("/system/time")
 async def server_time() -> dict[str, str]:
-    return {"time": datetime.now(timezone.utc).isoformat()}
+    return {"time": datetime.now(UTC).isoformat()}
 
 
 @router.get("/system/database")

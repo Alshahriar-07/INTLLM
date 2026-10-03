@@ -13,13 +13,13 @@ import {
   Wrench,
   ShieldCheck
 } from 'lucide-react';
-import { OPENAI_BASE } from '../../lib/api/client';
+import { BACKEND_ORIGIN, DISPLAY_OPENAI_BASE } from '../../lib/api/client';
 import { CodeBlock } from '../chat/CodeBlock';
 import { Badge } from '../ui/Badge';
 import { cn } from '../../lib/utils';
 
-const BASE = OPENAI_BASE ?? 'http://127.0.0.1:8000/v1';
-const HOST = BASE.replace(/\/v1$/, '');
+const BASE = DISPLAY_OPENAI_BASE;
+const HOST = BACKEND_ORIGIN;
 
 type SectionId =
   | 'overview'

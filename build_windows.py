@@ -8,17 +8,19 @@ Steps (all real, no shortcuts):
   1. npm install + npm run build   -> production frontend in dist/
   2. python -m pytest (backend)    -> real test gate
   3. npm run lint (tsc typecheck)  -> real type gate
-  4. PyInstaller --onefile         -> dist/INTLLM.exe (x64)
-  5. verify exe exists, is x64, and launches with a working /api/health
+  4. PyInstaller --onefile         -> build/release/INTLLM-v<version>-win64x.exe
+  5. verify the exe exists, is x64, and serves a working /api/health + SPA
+     (headless desktop mode, no GUI window during the build)
 
-The exe bundles the Python runtime + backend + frontend build. Ollama and
-PostgreSQL remain external dependencies that the app detects and reports
-honestly.
+The exe bundles the Python runtime + backend + frontend build + the native
+desktop shell (pywebview/WebView2). Ollama and PostgreSQL remain external
+dependencies that the app detects and reports honestly.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -34,9 +36,20 @@ BUILD_DIR = ROOT / "build"
 # Release output lives in build/release so the exe never collides with the
 # frontend dist/ folder that Vite empties on every build.
 RELEASE_DIR = ROOT / "build" / "release"
-OUT_EXE = RELEASE_DIR / "INTLLM.exe"
 
 STEP_PREFIX = "\n=== "
+
+
+def project_version() -> str:
+    text = (BACKEND / "app" / "__init__.py").read_text(encoding="utf-8")
+    match = re.search(r'__version__\s*=\s*"([^"]+)"', text)
+    if not match:
+        raise SystemExit("could not read __version__ from backend/app/__init__.py")
+    return match.group(1)
+
+
+def portable_exe_path(version: str) -> Path:
+    return RELEASE_DIR / f"INTLLM-v{version}-win64x.exe"
 
 
 def run(command: list[str] | str, cwd: Path, timeout: int = 1200) -> None:
@@ -73,21 +86,29 @@ def step_typecheck() -> None:
     run(["npm", "run", "lint"], ROOT)
 
 
-def step_package() -> None:
+def step_package(version: str) -> Path:
     print(f"{STEP_PREFIX}4/5 PyInstaller package (onefile)")
     try:
         import PyInstaller  # noqa: F401
     except ImportError:
         run([sys.executable, "-m", "pip", "install", "pyinstaller>=6.0"], BACKEND)
-    # Remove only a previous exe (never the whole release dir: it may already
-    # hold the wheel/sdist built by scripts/build_release.py).
+    try:
+        import webview  # noqa: F401
+    except ImportError:
+        run([sys.executable, "-m", "pip", "install", "pywebview>=5.0"], BACKEND)
+    # Managed local PostgreSQL binaries (pgserver ships PostgreSQL + pgvector).
+    try:
+        import pgserver  # noqa: F401
+    except ImportError:
+        run([sys.executable, "-m", "pip", "install", "pgserver>=0.1.4"], BACKEND)
     RELEASE_DIR.mkdir(parents=True, exist_ok=True)
-    if OUT_EXE.exists():
+    out_exe = portable_exe_path(version)
+    if out_exe.exists():
         try:
-            OUT_EXE.unlink()
+            out_exe.unlink()
         except PermissionError:
             raise SystemExit(
-                f"{OUT_EXE} is locked (another INTLLM.exe is still running). "
+                f"{out_exe} is locked (another INTLLM.exe is still running). "
                 "Close it and retry."
             )
     BUILD_DIR.mkdir(exist_ok=True)
@@ -108,6 +129,16 @@ def step_package() -> None:
         ],
         BACKEND,
     )
+    # PyInstaller names the output from the spec ("INTLLM.exe"); rename it to
+    # the versioned release asset name.
+    produced = RELEASE_DIR / "INTLLM.exe"
+    if not produced.is_file():
+        raise SystemExit(f"{produced.name} was not produced")
+    if produced != out_exe:
+        if out_exe.exists():
+            out_exe.unlink()
+        produced.replace(out_exe)
+    return out_exe
 
 
 def exe_arch(path: Path) -> str:
@@ -122,29 +153,34 @@ def exe_arch(path: Path) -> str:
     return {0x8664: "x64 (AMD64)", 0xAA64: "ARM64", 0x14C: "x86"}.get(machine, hex(machine))
 
 
-def step_smoke_test() -> None:
+def step_smoke_test(out_exe: Path) -> None:
     print(f"{STEP_PREFIX}5/5 Executable smoke test")
-    if not OUT_EXE.is_file():
-        raise SystemExit(f"{OUT_EXE.name} was not produced")
-    size_mb = OUT_EXE.stat().st_size / (1024 * 1024)
-    arch = exe_arch(OUT_EXE)
-    print(f"  exe: {OUT_EXE}")
+    if not out_exe.is_file():
+        raise SystemExit(f"{out_exe.name} was not produced")
+    size_mb = out_exe.stat().st_size / (1024 * 1024)
+    arch = exe_arch(out_exe)
+    print(f"  exe: {out_exe.name}")
     print(f"  size: {size_mb:.1f} MB | arch: {arch}")
     if "x64" not in arch:
         raise SystemExit(f"Executable is not x64: {arch}")
 
-    # Launch the real exe on a test port and probe /api/health + SPA.
+    # Launch the real exe on a test port in headless desktop mode (no GUI
+    # window during the build) and probe /api/health + the SPA fallback.
     import socket
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         if s.connect_ex(("127.0.0.1", 8791)) == 0:
             raise SystemExit("Smoke test port 8791 busy; free it and retry")
 
-    env = {**os.environ, "INTLLM_PORT": "8791"}
+    env = {
+        **os.environ,
+        "INTLLM_PORT": "8791",
+        "INTLLM_DESKTOP_HEADLESS": "1",
+    }
     log_path = BUILD_DIR / "smoke-test.log"
     with log_path.open("w", encoding="utf-8") as log_file:
         proc = subprocess.Popen(
-            [str(OUT_EXE)],
+            [str(out_exe)],
             cwd=str(ROOT / "build"),
             env=env,
             stdout=log_file,
@@ -207,13 +243,18 @@ def step_smoke_test() -> None:
 
 
 def main() -> int:
-    print(f"INTLLM Windows x64 build -> {OUT_EXE}")
+    version = project_version()
+    out_exe = portable_exe_path(version)
+    print(f"INTLLM Windows x64 build -> {out_exe.name}")
     step_frontend()
     step_backend_tests()
     step_typecheck()
-    step_package()
-    step_smoke_test()
-    print(f"\nBUILD COMPLETE: {OUT_EXE} ({OUT_EXE.stat().st_size / (1024**2):.1f} MB, {exe_arch(OUT_EXE)})")
+    built = step_package(version)
+    step_smoke_test(built)
+    print(
+        f"\nBUILD COMPLETE: {built.name} "
+        f"({built.stat().st_size / (1024**2):.1f} MB, {exe_arch(built)})"
+    )
     return 0
 
 

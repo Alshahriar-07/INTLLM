@@ -9,7 +9,7 @@ actions; those are gated by the tool gateway's approval policy.
 from __future__ import annotations
 
 import base64
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.config.settings import get_settings
@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class BrowserService:
@@ -35,7 +35,7 @@ class BrowserService:
     # --- availability -----------------------------------------------------
     def _import_playwright(self):
         try:
-            from playwright.async_api import async_playwright  # noqa: PLC0415
+            from playwright.async_api import async_playwright
         except Exception as exc:  # noqa: BLE001
             self._last_error = f"Playwright is not installed: {exc}"
             return None
@@ -64,7 +64,7 @@ class BrowserService:
                 headless=self._settings.intllm_browser_headless
             )
             self._page = await self._browser.new_page()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ServiceUnavailableError(
                 "Browser could not be launched (browsers may need `playwright install`)",
                 details={"reason": str(exc)},
@@ -99,7 +99,7 @@ class BrowserService:
             return "Untitled"
 
     async def open(self, url: str) -> dict[str, Any]:
-        from app.services.web.service import guard_url  # noqa: PLC0415
+        from app.services.web.service import guard_url
 
         guard_url(url)
         page = await self._ensure_page()

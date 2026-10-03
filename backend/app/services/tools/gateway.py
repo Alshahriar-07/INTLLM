@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import dataclasses
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from app.config.settings import get_settings
 from app.core.errors import NotFoundError, PermissionDeniedError, ValidationError
@@ -218,7 +219,7 @@ class ToolGateway:
             output, status, error = None, "denied", str(exc)
         except (ValidationError, NotFoundError) as exc:
             output, status, error = None, "failed", str(exc)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.exception("tool execution failed")
             output, status, error = None, "failed", f"{type(exc).__name__}: {exc}"
 

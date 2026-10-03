@@ -8,10 +8,10 @@ from app.db.repositories.memory import MemoryRepository
 from app.db.repositories.models import ModelRepository
 
 __all__ = [
+    "ApiKeyRepository",
     "AuditRepository",
     "BackgroundRepository",
     "ConversationRepository",
-    "ApiKeyRepository",
     "MemoryRepository",
     "ModelRepository",
 ]

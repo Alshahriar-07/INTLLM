@@ -3,27 +3,39 @@
 A fresh local install must be able to initialize PostgreSQL automatically and
 report its state honestly. This module:
 
-* verifies PostgreSQL is reachable,
+* drives the shared health state through ``initializing`` → ``connected`` /
+  ``disconnected`` / ``error`` (see :mod:`app.db.health`),
+* verifies PostgreSQL is reachable (creating a *missing* database with
+  ``CREATE DATABASE`` when enabled — never ``DROP``),
 * verifies the ``pgvector`` extension is available (semantic memory depends on
   it and must never silently degrade to keyword-only),
-* creates the schema. Alembic is used when it is importable *and* the migration
-  directory is present (development / wheel-from-checkout). In the frozen
-  Windows executable Alembic (and ``migrations/``) are not bundled, so the
-  schema is created from SQLAlchemy metadata instead — real DDL against the
-  configured PostgreSQL, not a stub.
+* applies the schema (Alembic when available, SQLAlchemy metadata otherwise),
+* verifies that every required table exists before reporting ``running``.
 
 Nothing here fabricates success: an unreachable database or a missing extension
-is returned as ``unavailable`` / ``misconfigured`` with an actionable message.
+is returned as ``unavailable`` / ``misconfigured`` with an actionable category
+and message.
 """
 
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 from app.core.logging import get_logger
+from app.db.health import (
+    CATEGORY_DATABASE_MISSING,
+    CATEGORY_MIGRATION_FAILURE,
+    CATEGORY_PGVECTOR_MISSING,
+    CATEGORY_SCHEMA_MISSING,
+    DatabaseDiagnostic,
+    classify_database_error,
+    get_database_health,
+    sanitize_text,
+)
 
 logger = get_logger(__name__)
 
@@ -32,10 +44,31 @@ STATUS_RUNNING = "running"
 STATUS_MISCONFIGURED = "misconfigured"
 STATUS_UNAVAILABLE = "unavailable"
 
+#: Every table the runtime requires. ``running`` is only reported once all of
+#: these exist, so a half-applied schema can never masquerade as ready.
+REQUIRED_TABLES: tuple[str, ...] = (
+    "app_settings",
+    "models",
+    "conversations",
+    "messages",
+    "memory_items",
+    "memory_sources",
+    "flash_index",
+    "hot_cache_metadata",
+    "api_keys",
+    "background_jobs",
+    "job_events",
+    "tool_runs",
+    "browser_sessions",
+    "audit_events",
+    "diagnostics",
+)
+
 _PGVECTOR_ACTION = (
     "Install the pgvector extension for your PostgreSQL server "
     "(https://github.com/pgvector/pgvector) and re-run INTLLM."
 )
+_SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 @dataclass
@@ -49,6 +82,8 @@ class DatabaseReport:
     migration: str | None = None
     detail: str | None = None
     actions: list[str] = field(default_factory=list)
+    category: str | None = None
+    missing_tables: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -70,6 +105,20 @@ async def _detect_revision(connection) -> str | None:
     return row
 
 
+async def _missing_tables(connection) -> list[str]:
+    """Return the required tables that do not exist yet."""
+    from sqlalchemy import text
+
+    missing: list[str] = []
+    for table in REQUIRED_TABLES:
+        exists = await connection.scalar(
+            text("SELECT to_regclass(:name)"), {"name": f"public.{table}"}
+        )
+        if exists is None:
+            missing.append(table)
+    return missing
+
+
 async def _inspect_with_database() -> DatabaseReport:
     """Connect once and report PostgreSQL / pgvector / schema state."""
     from sqlalchemy import text
@@ -79,12 +128,14 @@ async def _inspect_with_database() -> DatabaseReport:
     database = get_database()
     available, error = await database.ping()
     if not available:
+        category = get_database_health().snapshot().category
         return DatabaseReport(
             status=STATUS_UNAVAILABLE,
+            category=category,
             detail=error,
             actions=[
-                "Start PostgreSQL and ensure INTLLM_DATABASE_URL points at a reachable "
-                "database, then re-run INTLLM."
+                "Start PostgreSQL and ensure INTLLM_DATABASE_URL points at a "
+                "reachable database, then re-run INTLLM."
             ],
         )
 
@@ -92,9 +143,8 @@ async def _inspect_with_database() -> DatabaseReport:
         pgvector = bool(
             await connection.scalar(text("SELECT 1 FROM pg_extension WHERE extname = 'vector'"))
         )
-        schema = bool(
-            await connection.scalar(text("SELECT to_regclass('public.api_keys') IS NOT NULL"))
-        )
+        schema = bool(await connection.scalar(text("SELECT to_regclass('public.api_keys')")))
+        missing = await _missing_tables(connection) if schema else list(REQUIRED_TABLES)
         revision = await _detect_revision(connection) if schema else None
 
     if not pgvector:
@@ -104,33 +154,134 @@ async def _inspect_with_database() -> DatabaseReport:
             pgvector=False,
             schema=schema,
             migration=revision,
+            missing_tables=missing,
+            category=CATEGORY_PGVECTOR_MISSING,
             detail="PostgreSQL is reachable but the pgvector extension is not available.",
             actions=[_PGVECTOR_ACTION],
         )
 
+    schema_ready = schema and not missing
     return DatabaseReport(
-        status=STATUS_RUNNING if schema else STATUS_MISCONFIGURED,
+        status=STATUS_RUNNING if schema_ready else STATUS_MISCONFIGURED,
         postgres=True,
         pgvector=True,
-        schema=schema,
+        schema=schema_ready,
         migration=revision,
-        detail=None if schema else "Database schema has not been initialized yet.",
-        actions=[] if schema else ["Run INTLLM once to apply migrations automatically."],
+        missing_tables=missing,
+        category=None if schema_ready else CATEGORY_SCHEMA_MISSING,
+        detail=None
+        if schema_ready
+        else "The database schema has not been initialized yet.",
+        actions=[]
+        if schema_ready
+        else ["Run INTLLM once to apply the schema automatically."],
     )
+
+
+def _sync_health(report: DatabaseReport) -> None:
+    """Reflect an inspection report into the shared health state."""
+    health = get_database_health()
+    if report.status == STATUS_RUNNING:
+        health.mark_connected(
+            pgvector=report.pgvector,
+            schema=report.schema,
+            migration=report.migration,
+        )
+    elif report.postgres:
+        category = report.category or CATEGORY_SCHEMA_MISSING
+        health.mark_failure(
+            DatabaseDiagnostic(
+                category=category,
+                message=report.detail or "Database is not ready",
+                actions=list(report.actions),
+            )
+        )
+    else:
+        # A raw unreachable state without a classified diagnostic.
+        category = report.category
+        if category is None:
+            diagnostic = classify_database_error(Exception(report.detail or ""))
+            category = diagnostic.category
+            actions = report.actions or diagnostic.actions
+        else:
+            actions = report.actions
+        health.mark_failure(
+            DatabaseDiagnostic(
+                category=category,
+                message=report.detail or "PostgreSQL is unavailable",
+                actions=list(actions),
+            )
+        )
 
 
 async def inspect() -> DatabaseReport:
     """Read-only readiness check (safe to call from request handlers)."""
     try:
-        return await _inspect_with_database()
+        report = await _inspect_with_database()
     except Exception as exc:  # noqa: BLE001 - reported as a status, never raised
-        return DatabaseReport(status=STATUS_UNAVAILABLE, detail=f"{type(exc).__name__}: {exc}")
+        diagnostic = classify_database_error(exc)
+        report = DatabaseReport(
+            status=STATUS_UNAVAILABLE,
+            category=diagnostic.category,
+            detail=sanitize_text(f"{type(exc).__name__}: {exc}"),
+            actions=list(diagnostic.actions),
+        )
+    _sync_health(report)
+    return report
 
 
-# --- Initialization ------------------------------------------------------------
+# --- Missing-database creation -------------------------------------------------
 
 # backend/ root (…/backend/app/services/system/db_init.py -> parents[3] == backend)
 _BACKEND_ROOT = Path(__file__).resolve().parents[3]
+
+
+async def _create_missing_database() -> tuple[bool, str | None]:
+    """Create the configured database on the local server when it is missing.
+
+    Connects to the ``postgres`` maintenance database with the same host and
+    credentials and runs ``CREATE DATABASE``. Only ever creates — never drops or
+    resets user data.
+    """
+    from sqlalchemy import text
+    from sqlalchemy.engine import make_url
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from app.config.settings import get_settings
+
+    settings = get_settings()
+    try:
+        url = make_url(settings.intllm_database_url)
+    except Exception as exc:  # noqa: BLE001 - malformed URL is reported
+        return False, f"Invalid INTLLM_DATABASE_URL: {exc}"
+
+    database_name = url.database
+    if not database_name or not _SAFE_IDENTIFIER.match(database_name):
+        return False, f"Refusing to create an unsafe database name: {database_name!r}"
+
+    maintenance = url.set(database="postgres")
+    engine = create_async_engine(
+        maintenance.render_as_string(hide_password=False),
+        isolation_level="AUTOCOMMIT",
+        connect_args={"timeout": settings.intllm_db_connect_timeout_seconds},
+    )
+    try:
+        async with engine.connect() as connection:
+            exists = await connection.scalar(
+                text("SELECT 1 FROM pg_database WHERE datname = :name"),
+                {"name": database_name},
+            )
+            if exists:
+                return True, None
+            await connection.exec_driver_sql(f'CREATE DATABASE "{database_name}"')
+    except Exception as exc:  # noqa: BLE001 - returned to the caller
+        return False, sanitize_text(f"{type(exc).__name__}: {exc}")
+    finally:
+        await engine.dispose()
+    return True, None
+
+
+# --- Schema creation -----------------------------------------------------------
 
 
 def _alembic_config_path() -> Path | None:
@@ -165,9 +316,33 @@ def _run_alembic_upgrade(config_path: Path) -> None:
 async def _initialize() -> DatabaseReport:
     from app.db.session import get_database
 
+    health = get_database_health()
+    health.begin_initialization()
+
     report = await inspect()
     if not report.postgres:
-        return report
+        # A genuinely missing database can be created once, transparently.
+        if report.category == CATEGORY_DATABASE_MISSING:
+            from app.config.settings import get_settings
+
+            if get_settings().intllm_db_auto_create:
+                created, create_error = await _create_missing_database()
+                if created:
+                    logger.info("created missing local database")
+                    report = await inspect()
+                else:
+                    logger.warning(
+                        "could not create missing database",
+                        extra={"intllm_extra": {"error": create_error}},
+                    )
+                    report.category = CATEGORY_DATABASE_MISSING
+                    report.actions = [
+                        "Create the database manually with "
+                        "`createdb <name>` (or pgAdmin), then re-run INTLLM."
+                    ]
+        if not report.postgres:
+            _sync_health(report)
+            return report
 
     if not report.pgvector:
         # Best-effort: a superuser may be able to create the extension.
@@ -175,12 +350,14 @@ async def _initialize() -> DatabaseReport:
             async with get_database().engine.begin() as connection:
                 await connection.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
         except Exception as exc:  # noqa: BLE001 - surfaced in the report
-            report.detail = f"{report.detail} (CREATE EXTENSION failed: {exc})"
+            report.detail = f"{report.detail} (CREATE EXTENSION failed: {sanitize_text(exc)})"
         report = await inspect()
         if not report.pgvector:
+            _sync_health(report)
             return report
 
-    if report.schema:
+    if report.schema and not report.missing_tables:
+        _sync_health(report)
         return report
 
     config_path = _alembic_config_path()
@@ -190,16 +367,36 @@ async def _initialize() -> DatabaseReport:
         else:
             await _create_schema_from_metadata()
     except Exception as exc:  # noqa: BLE001 - reported, never raised
+        logger.warning(
+            "schema initialization failed",
+            extra={"intllm_extra": {"error": sanitize_text(exc)}},
+        )
         failed = await inspect()
         failed.status = STATUS_MISCONFIGURED
-        failed.detail = f"Schema initialization failed: {type(exc).__name__}: {exc}"
+        failed.category = CATEGORY_MIGRATION_FAILURE
+        failed.detail = sanitize_text(
+            f"Schema initialization failed: {type(exc).__name__}: {exc}"
+        )
         failed.actions = [
             "Verify the database user has CREATE privileges (and rights to CREATE "
             "EXTENSION vector), then re-run INTLLM."
         ]
+        _sync_health(failed)
         return failed
 
-    return await inspect()
+    final = await inspect()
+    if final.status == STATUS_RUNNING:
+        logger.info(
+            "database schema verified",
+            extra={
+                "intllm_extra": {
+                    "migration": final.migration,
+                    "tables": len(REQUIRED_TABLES),
+                }
+            },
+        )
+    _sync_health(final)
+    return final
 
 
 async def initialize() -> DatabaseReport:
@@ -211,9 +408,13 @@ async def initialize() -> DatabaseReport:
     try:
         return await _initialize()
     except Exception as exc:  # noqa: BLE001 - reported, never raised
+        diagnostic = classify_database_error(exc)
+        get_database_health().mark_failure(diagnostic)
         return DatabaseReport(
             status=STATUS_UNAVAILABLE,
-            detail=f"{type(exc).__name__}: {exc}",
+            category=diagnostic.category,
+            detail=sanitize_text(f"{type(exc).__name__}: {exc}"),
+            actions=list(diagnostic.actions),
         )
 
 

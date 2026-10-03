@@ -6,6 +6,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import ConflictError
 from app.core.security import (
     KEY_PREFIX,
     generate_api_key,
@@ -28,9 +29,17 @@ class ApiKeyService:
         name: str,
         scopes: list[str] | None = None,
     ) -> tuple[ApiKey, str]:
-        raw_key = generate_api_key()
-        salt_hex, hash_hex = hash_api_key(raw_key)
         repo = ApiKeyRepository(session)
+        # Cryptographic randomness already makes collisions effectively
+        # impossible; the fingerprint check guarantees uniqueness anyway.
+        raw_key = generate_api_key()
+        for _ in range(5):
+            if not await repo.fingerprint_exists(key_fingerprint(raw_key)):
+                break
+            raw_key = generate_api_key()
+        else:
+            raise ConflictError("Could not generate a unique API key; please retry.")
+        salt_hex, hash_hex = hash_api_key(raw_key)
         record = await repo.create(
             name=name,
             key_prefix=KEY_PREFIX,
@@ -62,6 +71,25 @@ class ApiKeyService:
                 "api_key.revoked", target=str(key_id), outcome="success"
             )
         return revoked
+
+    async def regenerate(
+        self, session: AsyncSession, key_id: uuid.UUID
+    ) -> tuple[ApiKey, str] | None:
+        """Revoke the named key and issue a replacement with the same label."""
+        repo = ApiKeyRepository(session)
+        existing = await repo.get(key_id)
+        if existing is None:
+            return None
+        name = existing.name
+        scopes = existing.scopes or DEFAULT_SCOPES
+        await repo.revoke(key_id)
+        record, raw_key = await self.create(session, name=name, scopes=scopes)
+        await AuditRepository(session).record(
+            "api_key.regenerated",
+            target=name,
+            detail={"old_key_id": str(key_id), "new_key_id": str(record.id)},
+        )
+        return record, raw_key
 
 
 _key_service: ApiKeyService | None = None

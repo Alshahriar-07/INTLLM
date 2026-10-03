@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,6 +46,12 @@ class ApiKeyRepository:
         await self._session.flush()
         return record
 
+    async def fingerprint_exists(self, fingerprint: str) -> bool:
+        result = await self._session.scalar(
+            select(ApiKey.id).where(ApiKey.fingerprint == fingerprint)
+        )
+        return result is not None
+
     async def find_active_by_raw_hint(self, raw_key: str) -> list[ApiKey]:
         """Narrow candidates by fingerprint before constant-time verification."""
         fingerprint = key_fingerprint(raw_key)
@@ -57,7 +63,7 @@ class ApiKeyRepository:
         return list(result.scalars().all())
 
     async def touch(self, record: ApiKey) -> None:
-        record.last_used_at = datetime.now(timezone.utc)
+        record.last_used_at = datetime.now(UTC)
         await self._session.flush()
 
     async def revoke(self, key_id: uuid.UUID) -> bool:
@@ -65,6 +71,6 @@ class ApiKeyRepository:
         if record is None:
             return False
         record.status = "revoked"
-        record.revoked_at = datetime.now(timezone.utc)
+        record.revoked_at = datetime.now(UTC)
         await self._session.flush()
         return True

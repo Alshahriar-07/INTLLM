@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -32,6 +32,12 @@ class ConversationRepository:
             .options(selectinload(Conversation.messages))
         )
         return result.scalar_one_or_none()
+
+    async def exists(self, conversation_id: uuid.UUID) -> bool:
+        result = await self._session.scalar(
+            select(Conversation.id).where(Conversation.id == conversation_id)
+        )
+        return result is not None
 
     async def create(self, title: str, model_name: str | None = None) -> Conversation:
         conversation = Conversation(title=title, model_name=model_name)
@@ -61,6 +67,13 @@ class ConversationRepository:
         )
         self._session.add(message)
         await self._session.flush()
+        # Touch the conversation so "last activity" and sidebar ordering stay
+        # accurate (updated_at has an onupdate trigger).
+        await self._session.execute(
+            update(Conversation)
+            .where(Conversation.id == conversation_id)
+            .values(updated_at=func.now())
+        )
         return message
 
     async def rename(self, conversation_id: uuid.UUID, title: str) -> Conversation | None:

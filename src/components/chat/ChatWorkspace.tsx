@@ -1,6 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, Loader2, RefreshCw } from 'lucide-react';
-import { ActivityStep, AgentWorkspace, ChatMode, Message, WebSource } from '../../types';
+import { AlertCircle, Loader2, RefreshCw, ShieldAlert } from 'lucide-react';
+import {
+  ActivityStep,
+  AgentApprovalRequest,
+  AgentPermissionMode,
+  AgentWorkspace,
+  ChatMode,
+  Message,
+  WebSource,
+} from '../../types';
 import { ChatMessages } from './ChatMessages';
 import { ChatComposer } from './ChatComposer';
 import { ConversationList } from './ConversationList';
@@ -54,6 +62,35 @@ function activityFromEvent(type: string, data: any): ActivityStep | null {
         status: 'failed',
         detail: data?.message
       };
+    case 'agent.step':
+      return {
+        ...base,
+        type: 'thinking',
+        label: `Agent step ${data?.step ?? ''}/${data?.max ?? ''}`.trim(),
+        status: 'running',
+      };
+    case 'agent.tool.started':
+      return {
+        ...base,
+        type: 'tool',
+        label: data?.summary ?? data?.tool ?? 'Tool',
+        status: 'running',
+        detail: data?.target ?? undefined,
+      };
+    case 'agent.tool.completed': {
+      return {
+        ...base,
+        type: 'tool',
+        label: data?.summary ?? data?.tool ?? 'Tool',
+        status: data?.status === 'completed' ? 'completed' : 'failed',
+        latencyMs: typeof data?.durationMs === 'number' ? Math.round(data.durationMs) : undefined,
+        detail: data?.detail ?? data?.target ?? undefined,
+      };
+    }
+    case 'agent.permission.resolved':
+      return data?.allowed
+        ? { ...base, type: 'tool', label: 'Permission granted', status: 'running' }
+        : { ...base, type: 'tool', label: 'Permission denied', status: 'failed' };
     default:
       return null;
   }
@@ -83,6 +120,8 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
 
   // --- Agent mode / workspace --------------------------------------------
   const [mode, setMode] = useState<ChatMode>('chat');
+  const [permissionMode, setPermissionMode] = useState<AgentPermissionMode>('ask');
+  const [pendingApproval, setPendingApproval] = useState<AgentApprovalRequest | null>(null);
   const [workspace, setWorkspace] = useState<AgentWorkspace | null>(null);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [showWorkspaceModal, setShowWorkspaceModal] = useState(false);
@@ -111,12 +150,31 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
     }
   }, [intllm.connected, intllm.loading, refreshConversations]);
 
-  // Load the Agent workspace state from the backend (never frontend-only).
+  // Load the Agent workspace and permission mode from the backend (never
+  // frontend-only).
   useEffect(() => {
     if (intllm.connected) {
-      agentService.getStatus().then(setWorkspace);
+      agentService.getStatus().then((status) => {
+        setWorkspace(status);
+        if (status?.permissionMode) setPermissionMode(status.permissionMode);
+      });
     }
   }, [intllm.connected]);
+
+  const changePermissionMode = useCallback(async (next: AgentPermissionMode) => {
+    setPermissionMode(next);
+    const applied = await agentService.setPermissionMode(next);
+    if (applied) setPermissionMode(applied);
+  }, []);
+
+  const decideApproval = useCallback(
+    async (decision: 'allow' | 'deny') => {
+      const request = pendingApproval;
+      setPendingApproval(null);
+      if (request) await agentService.decidePermission(request.request_id, decision);
+    },
+    [pendingApproval]
+  );
 
   const openWorkspaceSelector = useCallback(async () => {
     setWorkspaceError(null);
@@ -252,6 +310,18 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
         {
           onDelta: (content) => updateAssistant((m) => ({ ...m, content: m.content + content })),
           onActivity: (type, data) => {
+            if (type === 'agent.permission.required') {
+              setPendingApproval({
+                request_id: data?.request_id,
+                tool: data?.tool,
+                target: data?.target ?? null,
+                summary: data?.summary ?? 'Agent requests permission',
+                command: data?.command ?? null,
+                cwd: data?.cwd ?? null,
+                risk: data?.risk ?? 'Low'
+              });
+              return;
+            }
             const step = activityFromEvent(type, data);
             if (!step) return;
             updateAssistant((m) => {
@@ -263,6 +333,7 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
             });
           },
           onCompleted: (data) => {
+            setPendingApproval(null);
             const sources: WebSource[] = data?.sources ?? [];
             updateAssistant((m) => ({
               ...m,
@@ -285,6 +356,7 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
             abortRef.current = null;
           },
           onError: (message) => {
+            setPendingApproval(null);
             setError(message);
             updateAssistant((m) => ({ ...m, isStreaming: false }));
             setIsStreaming(false);
@@ -299,6 +371,7 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
   const handleStop = useCallback(() => {
     abortRef.current?.();
     abortRef.current = null;
+    setPendingApproval(null);
     setIsStreaming(false);
     updateAssistant((m) => ({ ...m, isStreaming: false }));
   }, [updateAssistant]);
@@ -418,6 +491,35 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
           />
         )}
 
+        {/* Agent approval prompt (ASK ME mode) */}
+        {mode === 'agent' && pendingApproval && (
+          <div className="shrink-0 border-t border-warning/30 bg-warning/[0.06]">
+            <div className="max-w-3xl mx-auto w-full px-4 md:px-6 py-3 space-y-2">
+              <div className="flex items-center gap-2 text-xs font-mono text-warning">
+                <ShieldAlert className="w-4 h-4" aria-hidden />
+                Agent wants to {pendingApproval.summary}
+              </div>
+              {pendingApproval.command && (
+                <div className="text-[11px] font-mono text-primary bg-canvas border border-border rounded p-2 space-y-1">
+                  <div className="text-muted">
+                    Working directory: {pendingApproval.cwd || workspace?.path || '(workspace)'}
+                  </div>
+                  <code className="block break-all">{pendingApproval.command}</code>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <Button variant="primary" size="sm" onClick={() => decideApproval('allow')}>
+                  Allow
+                </Button>
+                <Button variant="danger" size="sm" onClick={() => decideApproval('deny')}>
+                  Deny
+                </Button>
+                <span className="text-[10px] font-mono text-muted">risk {pendingApproval.risk}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Composer */}
         <ChatComposer
           isConnected={isConnected}
@@ -428,6 +530,8 @@ export const ChatWorkspace: React.FC<ChatWorkspaceProps> = ({
           onSelectWorkspace={openWorkspaceSelector}
           onClearWorkspace={clearWorkspace}
           workspaceBusy={workspaceBusy}
+          permissionMode={permissionMode}
+          onPermissionModeChange={changePermissionMode}
           onSend={handleSend}
           onStop={handleStop}
         />

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import delete, func, or_, select, update
@@ -188,7 +188,7 @@ class MemoryRepository:
         }
 
     async def expired(self, limit: int = 100) -> list[MemoryItem]:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = await self._session.execute(
             select(MemoryItem)
             .where(MemoryItem.expires_at.is_not(None), MemoryItem.expires_at < now)
@@ -206,7 +206,7 @@ class MemoryRepository:
     async def touch_access(self, memory_ids: list[uuid.UUID]) -> None:
         if not memory_ids:
             return
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await self._session.execute(
             update(FlashIndex)
             .where(FlashIndex.memory_id.in_(memory_ids))
@@ -221,11 +221,11 @@ class MemoryRepository:
         record = result.scalar_one_or_none()
         if record is None:
             return None
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if record.expires_at is not None:
             expires = record.expires_at
             if expires.tzinfo is None:
-                expires = expires.replace(tzinfo=timezone.utc)
+                expires = expires.replace(tzinfo=UTC)
             if expires < now:
                 await self._session.delete(record)
                 await self._session.flush()
@@ -238,9 +238,9 @@ class MemoryRepository:
     async def hot_cache_put(
         self, *, memory_id: uuid.UUID, cache_key: str, ttl_seconds: int | None = None
     ) -> HotCacheMetadata:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expires = (
-            datetime.fromtimestamp(now.timestamp() + ttl_seconds, tz=timezone.utc)
+            datetime.fromtimestamp(now.timestamp() + ttl_seconds, tz=UTC)
             if ttl_seconds
             else None
         )
